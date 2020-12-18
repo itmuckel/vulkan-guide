@@ -3,27 +3,49 @@
 
 #pragma once
 
+#include <vector>
 #include <vk_types.h>
 
-class VulkanEngine {
+class VulkanEngine
+{
 public:
+	bool isInitialized{false};
+	int frameNumber{0};
 
-	bool _isInitialized{ false };
-	int _frameNumber {0};
+	VkInstance instance{};
+	VkDebugUtilsMessengerEXT debug_messenger{};
+	VkPhysicalDevice chosenGPU{};
+	VkDevice device{};
+	VkSurfaceKHR surface{};
 
-	VkExtent2D _windowExtent{ 1700 , 900 };
+	VkExtent2D windowExtent{static_cast<uint32_t>(800), static_cast<uint32_t>(600)};
 
-	struct SDL_Window* _window{ nullptr };
+	// -------- swapchain
 
-	//initializes everything in the engine
+	VkSwapchainKHR swapchain{};
+
+	VkFormat swapchainImageFormat{};
+
+	std::vector<VkImage> swapchainImages{};
+
+	std::vector<VkImageView> swapchainImageViews{};
+
+	struct SDL_Window* window{nullptr};
+
+	// initializes everything in the engine
 	void init();
 
-	//shuts down the engine
-	void cleanup();
+	void initSwapchain();
 
-	//draw loop
+	// shuts down the engine
+	void cleanup() noexcept;
+
+	// draw loop
 	void draw();
 
-	//run main loop
+	// run main loop
 	void run();
+
+private:
+	void initVulkan();
 };
