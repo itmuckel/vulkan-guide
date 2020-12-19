@@ -20,6 +20,8 @@ public:
 
 	VkExtent2D windowExtent{static_cast<uint32_t>(800), static_cast<uint32_t>(600)};
 
+	struct SDL_Window* window{nullptr};
+
 	// -------- swapchain
 
 	VkSwapchainKHR swapchain{};
@@ -30,15 +32,30 @@ public:
 
 	std::vector<VkImageView> swapchainImageViews{};
 
-	struct SDL_Window* window{nullptr};
+	// -------- commands
+
+	VkQueue graphicsQueue{};
+	uint32_t graphicsQueueFamily{};
+
+	VkCommandPool commandPool{};
+	VkCommandBuffer mainCommandBuffer{};
+
+	// --------- render passes
+
+	VkRenderPass renderPass;
+	std::vector<VkFramebuffer> framebuffers;
+
+	// --------- synchronization
+
+	VkSemaphore presentSemaphore{};
+	VkSemaphore renderSemaphore{};
+	VkFence renderFence{};
 
 	// initializes everything in the engine
 	void init();
 
-	void initSwapchain();
-
 	// shuts down the engine
-	void cleanup() noexcept;
+	void cleanup();
 
 	// draw loop
 	void draw();
@@ -48,4 +65,14 @@ public:
 
 private:
 	void initVulkan();
+
+	void initSwapchain();
+
+	void initCommands();
+
+	void initDefaultRenderpass();
+
+	void initFramebuffers();
+
+	void initSyncStructures();
 };
