@@ -51,6 +51,11 @@ public:
 	VkSemaphore renderSemaphore{};
 	VkFence renderFence{};
 
+	// --------- pipeline
+
+	VkPipelineLayout trianglePipelineLayout;
+	VkPipeline trianglePipeline;
+
 	// initializes everything in the engine
 	void init();
 
@@ -75,4 +80,26 @@ private:
 	void initFramebuffers();
 
 	void initSyncStructures();
+
+	/// loads a shader module from a spir-v file. Returns false if it errors
+	bool loadShaderModule(const char* filePath, VkShaderModule& outShaderModule);
+
+	void initPipelines();
+};
+
+
+class PipelineBuilder
+{
+public:
+	std::vector<VkPipelineShaderStageCreateInfo> shaderStages;
+	VkPipelineVertexInputStateCreateInfo vertexInputInfo;
+	VkPipelineInputAssemblyStateCreateInfo inputAssembly;
+	VkViewport viewport;
+	VkRect2D scissor;
+	VkPipelineRasterizationStateCreateInfo rasterizer;
+	VkPipelineColorBlendAttachmentState colorBlendAttachment;
+	VkPipelineMultisampleStateCreateInfo multisampling;
+	VkPipelineLayout pipelineLayout;
+
+	VkPipeline buildPipeline(VkDevice device, VkRenderPass pass);
 };
