@@ -10,7 +10,6 @@ class VulkanEngine
 {
 public:
 	bool isInitialized{false};
-	int frameNumber{0};
 
 	VkInstance instance{};
 	VkDebugUtilsMessengerEXT debug_messenger{};
@@ -53,8 +52,15 @@ public:
 
 	// --------- pipeline
 
+	VkPipelineLayout monochromeTrianglePipelineLayout;
+	VkPipeline monochromeTrianglePipeline;
 	VkPipelineLayout trianglePipelineLayout;
 	VkPipeline trianglePipeline;
+
+	// --------- control flow
+
+	int frameNumber{0};
+	int selectedShader{0};
 
 	// initializes everything in the engine
 	void init();

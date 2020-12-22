@@ -231,8 +231,28 @@ bool VulkanEngine::loadShaderModule(const char* filePath, VkShaderModule& outSha
 
 void VulkanEngine::initPipelines()
 {
+	VkShaderModule monochromeTriangleFragShader{};
+	if (!loadShaderModule("../shaders/triangle.frag.spv", monochromeTriangleFragShader))
+	{
+		std::cout << "Error when building the triangle fragment shader module" << std::endl;
+	}
+	else
+	{
+		std::cout << "Triangle fragment shader succesfully loaded" << std::endl;
+	}
+
+	VkShaderModule monochromeTriangleVertexShader{};
+	if (!loadShaderModule("../shaders/triangle.vert.spv", monochromeTriangleVertexShader))
+	{
+		std::cout << "Error when building the triangle vertex shader module" << std::endl;
+	}
+	else
+	{
+		std::cout << "Triangle vertex shader succesfully loaded" << std::endl;
+	}
+
 	VkShaderModule triangleFragShader{};
-	if (!loadShaderModule("../shaders/triangle.frag.spv", triangleFragShader))
+	if (!loadShaderModule("../shaders/colored_triangle.frag.spv", triangleFragShader))
 	{
 		std::cout << "Error when building the triangle fragment shader module" << std::endl;
 	}
@@ -242,7 +262,7 @@ void VulkanEngine::initPipelines()
 	}
 
 	VkShaderModule triangleVertexShader{};
-	if (!loadShaderModule("../shaders/triangle.vert.spv", triangleVertexShader))
+	if (!loadShaderModule("../shaders/colored_triangle.vert.spv", triangleVertexShader))
 	{
 		std::cout << "Error when building the triangle vertex shader module" << std::endl;
 	}
@@ -255,16 +275,16 @@ void VulkanEngine::initPipelines()
 	// we are not using descriptor sets or other systems yet, so no need to use anything other than empty default
 	const auto pipelineLayoutInfo = vkinit::pipelineLayoutCreateInfo();
 
-	vkCheck(vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &trianglePipelineLayout));
+	vkCheck(vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &monochromeTrianglePipelineLayout));
 
 	// build the stage-create-info for both vertex and fragment stages. This lets the pipeline know the shader modules per stage
 	PipelineBuilder pipelineBuilder{};
 
 	pipelineBuilder.shaderStages.push_back(
-		vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_VERTEX_BIT, triangleVertexShader));
+		vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_VERTEX_BIT, monochromeTriangleVertexShader));
 
 	pipelineBuilder.shaderStages.push_back(
-		vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_FRAGMENT_BIT, triangleFragShader));
+		vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_FRAGMENT_BIT, monochromeTriangleFragShader));
 
 	// vertex input controls how to read vertices from vertex buffers. We arent using it yet
 	pipelineBuilder.vertexInputInfo = vkinit::vertexInputStateCreateInfo();
@@ -294,9 +314,22 @@ void VulkanEngine::initPipelines()
 	pipelineBuilder.colorBlendAttachment = vkinit::colorBlendAttachmentState();
 
 	// use the triangle layout we created
-	pipelineBuilder.pipelineLayout = trianglePipelineLayout;
+	pipelineBuilder.pipelineLayout = monochromeTrianglePipelineLayout;
 
 	// finally build the pipeline
+	monochromeTrianglePipeline = pipelineBuilder.buildPipeline(device, renderPass);
+
+	// clear the shader stages for the builder
+	pipelineBuilder.shaderStages.clear();
+
+	// add the other shaders
+	pipelineBuilder.shaderStages.push_back(
+		vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_VERTEX_BIT, triangleVertexShader));
+
+	pipelineBuilder.shaderStages.push_back(
+		vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_FRAGMENT_BIT, triangleFragShader));
+
+	// build the red triangle pipeline
 	trianglePipeline = pipelineBuilder.buildPipeline(device, renderPass);
 }
 
@@ -443,7 +476,16 @@ void VulkanEngine::draw()
 	rpInfo.pClearValues = &clearValue;
 
 	vkCmdBeginRenderPass(cmd, &rpInfo, VK_SUBPASS_CONTENTS_INLINE);
-	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, trianglePipeline);
+
+	if (selectedShader == 0)
+	{
+		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, trianglePipeline);
+	}
+	else
+	{
+		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, monochromeTrianglePipeline);
+	}
+
 	vkCmdDraw(cmd, 3, 1, 0, 0);
 	vkCmdEndRenderPass(cmd);
 	vkCheck(vkEndCommandBuffer(cmd));
@@ -497,15 +539,21 @@ void VulkanEngine::run()
 	SDL_Event e{};
 	auto bQuit = false;
 
-	// main loop
-	while (!bQuit)
-	{
-		// Handle events on queue
+	while (!bQuit) {
 		while (SDL_PollEvent(&e) != 0)
 		{
-			// close the window when user alt-f4s or clicks the X button
 			if (e.type == SDL_QUIT)
+			{
 				bQuit = true;
+			}
+			else if (e.type == SDL_KEYDOWN)
+			{
+				if (e.key.keysym.sym == SDLK_SPACE)
+				{
+					selectedShader += 1;
+					selectedShader %= 2;
+				}
+			}
 		}
 
 		draw();
