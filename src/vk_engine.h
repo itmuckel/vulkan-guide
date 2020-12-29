@@ -3,17 +3,43 @@
 
 #pragma once
 
+#include <deque>
+#include <functional>
 #include <vector>
 #include <vk_types.h>
+
+#include "vk_mesh.h"
+
+struct DeletionQueue
+{
+	std::deque<std::function<void()>> deletors;
+
+	void pushFunction(std::function<void()>&& function)
+	{
+		deletors.push_back(function);
+	}
+
+	void flush()
+	{
+		// reverse iterate the deletion queue to execute all the functions
+		for (auto it = deletors.rbegin(); it != deletors.rend(); it += 1)
+		{
+			(*it)(); //call functors
+		}
+
+		deletors.clear();
+	}
+};
 
 class VulkanEngine
 {
 public:
 	bool isInitialized{false};
+	DeletionQueue mainDeletionQueue{};
 
 	VkInstance instance{};
-	VkDebugUtilsMessengerEXT debug_messenger{};
-	VkPhysicalDevice chosenGPU{};
+	VkDebugUtilsMessengerEXT debugMessenger{};
+	VkPhysicalDevice chosenGpu{};
 	VkDevice device{};
 	VkSurfaceKHR surface{};
 
@@ -54,8 +80,13 @@ public:
 
 	VkPipelineLayout monochromeTrianglePipelineLayout;
 	VkPipeline monochromeTrianglePipeline;
-	VkPipelineLayout trianglePipelineLayout;
 	VkPipeline trianglePipeline;
+	VkPipeline meshPipeline;
+	Mesh triangleMesh;
+
+	// --------- memory
+
+	VmaAllocator allocator{};
 
 	// --------- control flow
 
@@ -91,6 +122,10 @@ private:
 	bool loadShaderModule(const char* filePath, VkShaderModule& outShaderModule);
 
 	void initPipelines();
+
+	void loadMeshes();
+
+	void uploadMesh(Mesh& mesh);
 };
 
 
