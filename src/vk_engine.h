@@ -46,6 +46,24 @@ struct DeletionQueue
 	}
 };
 
+struct Camera
+{
+	float height{ 0.f };
+
+	glm::vec3 pos{0.f, height, 3.f};
+	glm::vec3 up{0.f, 1.f, 0.f};
+	glm::vec3 direction{0.f, 0.f, -1.f};
+
+	float pitch = 0.f;
+	float yaw = -90.f;
+
+	static const float MOVE_SPEED;
+	static const float X_SPEED;
+	static const float Y_SPEED;
+
+	void calculateDirection(float deltaYaw, float deltaPitch);
+};
+
 struct MeshPushConstants
 {
 	glm::vec4 data{};
@@ -99,19 +117,13 @@ public:
 	VkSemaphore renderSemaphore{};
 	VkFence renderFence{};
 
-	// --------- pipeline
-
-	VkPipelineLayout monochromeTrianglePipelineLayout;
-	VkPipelineLayout meshPipelineLayout{};
-	VkPipeline monochromeTrianglePipeline;
-	VkPipeline trianglePipeline;
-	VkPipeline meshPipeline;
-
 	// --------- memory
 
 	VmaAllocator allocator{};
 
 	// --------- control flow
+
+	Camera camera{};
 
 	int frameNumber{0};
 	int selectedShader{0};

@@ -9,12 +9,14 @@
 
 #include <fstream>
 #include <iostream>
+#include <algorithm>
 #include <glm/gtx/transform.hpp>
 #include "vk_initializers.h"
 #include "vk_types.h"
 #include <VkBootstrap.h>
 #define VMA_IMPLEMENTATION
 #include "vk_mem_alloc.h"
+
 
 void vkCheck(const VkResult x)
 {
@@ -23,6 +25,24 @@ void vkCheck(const VkResult x)
 		std::cout << "Detected Vulkan error: " << x << '\n';
 		std::abort();
 	}
+}
+
+const float Camera::MOVE_SPEED = 0.05f;
+const float Camera::X_SPEED = 0.6f;
+const float Camera::Y_SPEED = 0.6f;
+
+void Camera::calculateDirection(const float deltaYaw, const float deltaPitch)
+{
+	yaw += deltaYaw;
+	pitch -= deltaPitch;
+
+	pitch = std::clamp(pitch, -89.f, 89.f);
+
+	direction.x = cos(glm::radians(yaw)) * cos(glm::radians(pitch));
+	direction.y = sin(glm::radians(pitch));
+	direction.z = sin(glm::radians(yaw)) * cos(glm::radians(pitch));
+
+	direction = glm::normalize(direction);
 }
 
 Material* VulkanEngine::createMaterial(VkPipeline pipeline, VkPipelineLayout layout, const std::string& name)
@@ -345,50 +365,29 @@ bool VulkanEngine::loadShaderModule(const char* filePath, VkShaderModule& outSha
 
 void VulkanEngine::initPipelines()
 {
-	VkShaderModule monochromeTriangleFragShader{};
-	if (!loadShaderModule("../shaders/triangle.frag.spv", monochromeTriangleFragShader))
+
+	VkShaderModule meshVert{};
+	if (!loadShaderModule("../shaders/mesh.vert.spv", meshVert))
 	{
-		std::cout << "Error when building the triangle fragment shader module" << std::endl;
-	}
-	else
-	{
-		std::cout << "Triangle fragment shader succesfully loaded" << std::endl;
+		std::cout << "Error when building the mesh vertex shader module" << std::endl;
 	}
 
-	VkShaderModule triangleFragShader{};
-	if (!loadShaderModule("../shaders/colored_triangle.frag.spv", triangleFragShader))
+	VkShaderModule monochromeFrag{};
+	if (!loadShaderModule("../shaders/monochrome.frag.spv", monochromeFrag))
 	{
-		std::cout << "Error when building the triangle fragment shader module" << std::endl;
-	}
-	else
-	{
-		std::cout << "Triangle fragment shader succesfully loaded" << std::endl;
+		std::cout << "Error when building the monochrome fragment shader module" << std::endl;
 	}
 
-	VkShaderModule triangleVertexShader{};
-	if (!loadShaderModule("../shaders/colored_triangle.vert.spv", triangleVertexShader))
+	VkShaderModule meshFrag{};
+	if (!loadShaderModule("../shaders/mesh.frag.spv", meshFrag))
 	{
-		std::cout << "Error when building the triangle vertex shader module" << std::endl;
-	}
-	else
-	{
-		std::cout << "Triangle vertex shader succesfully loaded" << std::endl;
-	}
-
-	VkShaderModule meshVertShader;
-	if (!loadShaderModule("../shaders/tri_mesh.vert.spv", meshVertShader))
-	{
-		std::cout << "Error when building the triangle vertex shader module" << std::endl;
-	}
-	else
-	{
-		std::cout << "Red Triangle vertex shader succesfully loaded" << std::endl;
+		std::cout << "Error when building the mesh fragment shader module" << std::endl;
 	}
 
 	// build the pipeline layout that controls the inputs/outputs of the shader
-	// we are not using descriptor sets or other systems yet, so no need to use anything other than empty default
 	auto pipelineLayoutInfo = vkinit::pipelineLayoutCreateInfo();
 
+	// used to change mvp matrix dynamically
 	VkPushConstantRange pushConstant{};
 	pushConstant.offset = 0;
 	pushConstant.size = sizeof(MeshPushConstants);
@@ -397,7 +396,9 @@ void VulkanEngine::initPipelines()
 	pipelineLayoutInfo.pushConstantRangeCount = 1;
 	pipelineLayoutInfo.pPushConstantRanges = &pushConstant;
 
-	vkCheck(vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &monochromeTrianglePipelineLayout));
+	VkPipelineLayout monochromePipelineLayout{};
+
+	vkCheck(vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &monochromePipelineLayout));
 
 	PipelineBuilder pipelineBuilder{};
 
@@ -443,30 +444,17 @@ void VulkanEngine::initPipelines()
 
 
 	pipelineBuilder.shaderStages.push_back(
-		vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_VERTEX_BIT, meshVertShader));
+		vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_VERTEX_BIT, meshVert));
 
 	pipelineBuilder.shaderStages.push_back(
-		vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_FRAGMENT_BIT, monochromeTriangleFragShader));
+		vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_FRAGMENT_BIT, monochromeFrag));
 
 	// use the triangle layout we created
-	pipelineBuilder.pipelineLayout = monochromeTrianglePipelineLayout;
+	pipelineBuilder.pipelineLayout = monochromePipelineLayout;
 
 	// finally build the pipeline
-	monochromeTrianglePipeline = pipelineBuilder.buildPipeline(device, renderPass);
-	createMaterial(monochromeTrianglePipeline, monochromeTrianglePipelineLayout, "monochrome");
-
-	// clear the shader stages for the builder
-	pipelineBuilder.shaderStages.clear();
-
-	// add the other shaders
-	pipelineBuilder.shaderStages.push_back(
-		vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_VERTEX_BIT, triangleVertexShader));
-
-	pipelineBuilder.shaderStages.push_back(
-		vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_FRAGMENT_BIT, triangleFragShader));
-
-	// build the red triangle pipeline
-	trianglePipeline = pipelineBuilder.buildPipeline(device, renderPass);
+	const auto monochromeTrianglePipeline = pipelineBuilder.buildPipeline(device, renderPass);
+	createMaterial(monochromeTrianglePipeline, monochromePipelineLayout, "monochrome");
 
 	// build the mesh pipeline
 
@@ -475,11 +463,11 @@ void VulkanEngine::initPipelines()
 
 	// add the other shaders
 	pipelineBuilder.shaderStages.push_back(
-		vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_VERTEX_BIT, meshVertShader));
+		vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_VERTEX_BIT, meshVert));
 
 	// make sure that triangleFragShader is holding the compiled colored_triangle.frag
 	pipelineBuilder.shaderStages.push_back(
-		vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_FRAGMENT_BIT, triangleFragShader));
+		vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_FRAGMENT_BIT, meshFrag));
 
 	// set up push constants
 	auto meshPipelineLayoutInfo = vkinit::pipelineLayoutCreateInfo();
@@ -487,28 +475,28 @@ void VulkanEngine::initPipelines()
 	meshPipelineLayoutInfo.pushConstantRangeCount = 1;
 	meshPipelineLayoutInfo.pPushConstantRanges = &pushConstant;
 
+	VkPipelineLayout meshPipelineLayout{};
+
 	vkCheck(vkCreatePipelineLayout(device, &meshPipelineLayoutInfo, nullptr, &meshPipelineLayout));
 
 	pipelineBuilder.pipelineLayout = meshPipelineLayout;
 
 	// build the mesh triangle pipeline
-	meshPipeline = pipelineBuilder.buildPipeline(device, renderPass);
+	const auto meshPipeline = pipelineBuilder.buildPipeline(device, renderPass);
 
 	createMaterial(meshPipeline, meshPipelineLayout, "defaultmesh");
 
 	// cleanup
 
 	// deleting all of the vulkan shaders
-	vkDestroyShaderModule(device, meshVertShader, nullptr);
-	vkDestroyShaderModule(device, monochromeTriangleFragShader, nullptr);
-	vkDestroyShaderModule(device, triangleVertexShader, nullptr);
-	vkDestroyShaderModule(device, triangleFragShader, nullptr);
+	vkDestroyShaderModule(device, meshVert, nullptr);
+	vkDestroyShaderModule(device, meshFrag, nullptr);
+	vkDestroyShaderModule(device, monochromeFrag, nullptr);
 
 	mainDeletionQueue.pushFunction([=]()
 	{
 		vkDestroyPipeline(device, monochromeTrianglePipeline, nullptr);
-		vkDestroyPipeline(device, trianglePipeline, nullptr);
-		vkDestroyPipelineLayout(device, monochromeTrianglePipelineLayout, nullptr);
+		vkDestroyPipelineLayout(device, monochromePipelineLayout, nullptr);
 		vkDestroyPipeline(device, meshPipeline, nullptr);
 		vkDestroyPipelineLayout(device, meshPipelineLayout, nullptr);
 	});
@@ -774,12 +762,7 @@ void VulkanEngine::draw()
 
 void VulkanEngine::drawObjects(const VkCommandBuffer cmd, RenderObject* first, int count) const
 {
-	//make a model view matrix for rendering the object
-	//camera view
-	const glm::vec3 camPos{0.f, -6.f, -10.f};
-
-	const glm::mat4 view = glm::translate(glm::mat4{1.f}, camPos);
-	//camera projection
+	const glm::mat4 view = glm::lookAt(camera.pos, camera.pos + camera.direction, camera.up);
 	glm::mat4 projection = glm::perspective(glm::radians(70.f),
 	                                        static_cast<float>(windowExtent.width) / windowExtent.height,
 	                                        0.1f, 200.0f);
@@ -833,8 +816,36 @@ void VulkanEngine::run()
 	SDL_Event e{};
 	auto bQuit = false;
 
+	SDL_SetRelativeMouseMode(SDL_TRUE);
+
 	while (!bQuit)
 	{
+		const auto keystate = SDL_GetKeyboardState(nullptr);
+
+		if (keystate[SDL_SCANCODE_W])
+		{
+			camera.pos += Camera::MOVE_SPEED * camera.direction;
+		}
+		if (keystate[SDL_SCANCODE_S])
+		{
+			camera.pos -= Camera::MOVE_SPEED * camera.direction;
+		}
+		if (keystate[SDL_SCANCODE_A])
+		{
+			camera.pos -= glm::normalize(glm::cross(camera.direction, camera.up)) * Camera::MOVE_SPEED;
+		}
+		if (keystate[SDL_SCANCODE_D])
+		{
+			camera.pos += glm::normalize(glm::cross(camera.direction, camera.up)) * Camera::MOVE_SPEED;
+		}
+
+		camera.pos.y = camera.height;
+
+		int mouseX{}, mouseY{};
+		SDL_GetRelativeMouseState(&mouseX, &mouseY);
+
+		camera.calculateDirection(mouseX * Camera::X_SPEED, mouseY * Camera::Y_SPEED);
+
 		while (SDL_PollEvent(&e) != 0)
 		{
 			if (e.type == SDL_QUIT)
