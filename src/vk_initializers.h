@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <vector>
 #include <vk_types.h>
 
 namespace vkinit
@@ -26,4 +27,14 @@ namespace vkinit
 	VkPipelineColorBlendAttachmentState colorBlendAttachmentState();
 
 	VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo();
+
+	VkRenderPassBeginInfo renderPassBeginInfo(const VkRenderPass& renderPass, const VkExtent2D& windowExtent, const VkFramebuffer& framebuffer);
+
+	VkImageCreateInfo imageCreateInfo(VkFormat format, VkImageUsageFlags usageFlags, VkExtent3D extent);
+
+	VkImageViewCreateInfo imageviewCreateInfo(VkFormat format, VkImage image, VkImageAspectFlags aspectFlags);
+
+	VkPipelineDepthStencilStateCreateInfo depthStencilCreateInfo(
+		bool depthTest, bool depthWrite, VkCompareOp compareOp);
+
 }

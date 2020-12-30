@@ -58,11 +58,13 @@ public:
 
 	VkSwapchainKHR swapchain{};
 
+	std::vector<VkImage> swapchainImages{};
+	std::vector<VkImageView> swapchainImageViews{};
 	VkFormat swapchainImageFormat{};
 
-	std::vector<VkImage> swapchainImages{};
-
-	std::vector<VkImageView> swapchainImageViews{};
+	VkImageView depthImageView{};
+	AllocatedImage depthImage{};
+	VkFormat depthFormat{};
 
 	// -------- commands
 
@@ -100,6 +102,7 @@ public:
 
 	int frameNumber{0};
 	int selectedShader{0};
+	Mesh monkeyMesh{};
 
 	// initializes everything in the engine
 	void init();
@@ -146,6 +149,7 @@ public:
 	VkRect2D scissor{};
 	VkPipelineRasterizationStateCreateInfo rasterizer{};
 	VkPipelineColorBlendAttachmentState colorBlendAttachment{};
+	VkPipelineDepthStencilStateCreateInfo depthStencil{};
 	VkPipelineMultisampleStateCreateInfo multisampling{};
 
 	VkPipelineLayout pipelineLayout{};
