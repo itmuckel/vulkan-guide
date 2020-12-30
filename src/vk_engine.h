@@ -4,12 +4,26 @@
 #pragma once
 
 #include <deque>
+#include <unordered_map>
 #include <functional>
 #include <vector>
 #include <vk_types.h>
 #include <glm/glm.hpp>
 
 #include "vk_mesh.h"
+
+struct Material
+{
+	VkPipeline pipeline;
+	VkPipelineLayout pipelineLayout;
+};
+
+struct RenderObject
+{
+	Mesh* mesh;
+	Material* material;
+	glm::mat4 transformMatrix;
+};
 
 struct DeletionQueue
 {
@@ -92,7 +106,6 @@ public:
 	VkPipeline monochromeTrianglePipeline;
 	VkPipeline trianglePipeline;
 	VkPipeline meshPipeline;
-	Mesh triangleMesh;
 
 	// --------- memory
 
@@ -102,16 +115,28 @@ public:
 
 	int frameNumber{0};
 	int selectedShader{0};
-	Mesh monkeyMesh{};
+
+	std::vector<RenderObject> renderables;
+	std::unordered_map<std::string, Material> materials;
+	std::unordered_map<std::string, Mesh> meshes;
+
+	Material* createMaterial(VkPipeline pipeline, VkPipelineLayout layout, const std::string& name);
+	Material* getMaterial(const std::string& name);
+
+	Mesh* getMesh(const std::string& name);
 
 	// initializes everything in the engine
 	void init();
+
+	void initScene();
 
 	// shuts down the engine
 	void cleanup();
 
 	// draw loop
 	void draw();
+
+	void drawObjects(VkCommandBuffer cmd, RenderObject* first, int count) const;
 
 	// run main loop
 	void run();
