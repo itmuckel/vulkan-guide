@@ -7,6 +7,7 @@
 #include <functional>
 #include <vector>
 #include <vk_types.h>
+#include <glm/glm.hpp>
 
 #include "vk_mesh.h"
 
@@ -29,6 +30,12 @@ struct DeletionQueue
 
 		deletors.clear();
 	}
+};
+
+struct MeshPushConstants
+{
+	glm::vec4 data{};
+	glm::mat4 renderMatrix{};
 };
 
 class VulkanEngine
@@ -79,6 +86,7 @@ public:
 	// --------- pipeline
 
 	VkPipelineLayout monochromeTrianglePipelineLayout;
+	VkPipelineLayout meshPipelineLayout{};
 	VkPipeline monochromeTrianglePipeline;
 	VkPipeline trianglePipeline;
 	VkPipeline meshPipeline;
@@ -128,19 +136,19 @@ private:
 	void uploadMesh(Mesh& mesh);
 };
 
-
 class PipelineBuilder
 {
 public:
-	std::vector<VkPipelineShaderStageCreateInfo> shaderStages;
-	VkPipelineVertexInputStateCreateInfo vertexInputInfo;
-	VkPipelineInputAssemblyStateCreateInfo inputAssembly;
-	VkViewport viewport;
-	VkRect2D scissor;
-	VkPipelineRasterizationStateCreateInfo rasterizer;
-	VkPipelineColorBlendAttachmentState colorBlendAttachment;
-	VkPipelineMultisampleStateCreateInfo multisampling;
-	VkPipelineLayout pipelineLayout;
+	std::vector<VkPipelineShaderStageCreateInfo> shaderStages{};
+	VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
+	VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
+	VkViewport viewport{};
+	VkRect2D scissor{};
+	VkPipelineRasterizationStateCreateInfo rasterizer{};
+	VkPipelineColorBlendAttachmentState colorBlendAttachment{};
+	VkPipelineMultisampleStateCreateInfo multisampling{};
+
+	VkPipelineLayout pipelineLayout{};
 
 	VkPipeline buildPipeline(VkDevice device, VkRenderPass pass);
 };

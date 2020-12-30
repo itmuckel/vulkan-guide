@@ -9,6 +9,7 @@
 
 #include <fstream>
 #include <iostream>
+#include <glm/gtx/transform.hpp>
 #include "vk_initializers.h"
 #include "vk_types.h"
 #include <VkBootstrap.h>
@@ -377,10 +378,12 @@ void VulkanEngine::initPipelines()
 
 	// connect the pipeline builder vertex input info to the one we get from Vertex
 	pipelineBuilder.vertexInputInfo.pVertexAttributeDescriptions = vertexDescription.attributes.data();
-	pipelineBuilder.vertexInputInfo.vertexAttributeDescriptionCount = vertexDescription.attributes.size();
+	pipelineBuilder.vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(
+		vertexDescription.attributes.size());
 
 	pipelineBuilder.vertexInputInfo.pVertexBindingDescriptions = vertexDescription.bindings.data();
-	pipelineBuilder.vertexInputInfo.vertexBindingDescriptionCount = vertexDescription.bindings.size();
+	pipelineBuilder.vertexInputInfo.vertexBindingDescriptionCount = static_cast<uint32_t>(
+		vertexDescription.bindings.size());
 
 	// clear the shader stages for the builder
 	pipelineBuilder.shaderStages.clear();
@@ -405,6 +408,21 @@ void VulkanEngine::initPipelines()
 	pipelineBuilder.shaderStages.push_back(
 		vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_FRAGMENT_BIT, triangleFragShader));
 
+	// set up push constants
+	auto meshPipelineLayoutInfo = vkinit::pipelineLayoutCreateInfo();
+
+	VkPushConstantRange pushConstant{};
+	pushConstant.offset = 0;
+	pushConstant.size = sizeof(MeshPushConstants);
+	pushConstant.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+
+	meshPipelineLayoutInfo.pushConstantRangeCount = 1;
+	meshPipelineLayoutInfo.pPushConstantRanges = &pushConstant;
+
+	vkCheck(vkCreatePipelineLayout(device, &meshPipelineLayoutInfo, nullptr, &meshPipelineLayout));
+
+	pipelineBuilder.pipelineLayout = meshPipelineLayout;
+
 	// build the mesh triangle pipeline
 	meshPipeline = pipelineBuilder.buildPipeline(device, renderPass);
 
@@ -421,8 +439,9 @@ void VulkanEngine::initPipelines()
 	{
 		vkDestroyPipeline(device, monochromeTrianglePipeline, nullptr);
 		vkDestroyPipeline(device, trianglePipeline, nullptr);
-		vkDestroyPipeline(device, meshPipeline, nullptr);
 		vkDestroyPipelineLayout(device, monochromeTrianglePipelineLayout, nullptr);
+		vkDestroyPipeline(device, meshPipeline, nullptr);
+		vkDestroyPipelineLayout(device, meshPipelineLayout, nullptr);
 	});
 }
 
@@ -495,7 +514,7 @@ VkPipeline PipelineBuilder::buildPipeline(const VkDevice device, const VkRenderP
 	VkGraphicsPipelineCreateInfo pipelineInfo{};
 	pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
 
-	pipelineInfo.stageCount = shaderStages.size();
+	pipelineInfo.stageCount = static_cast<uint32_t>(shaderStages.size());
 	pipelineInfo.pStages = shaderStages.data();
 	pipelineInfo.pVertexInputState = &vertexInputInfo;
 	pipelineInfo.pInputAssemblyState = &inputAssembly;
@@ -546,23 +565,6 @@ void VulkanEngine::cleanup()
 	if (isInitialized)
 	{
 		vkDeviceWaitIdle(device);
-
-		//vkDestroySemaphore(device, renderSemaphore, nullptr);
-		//vkDestroySemaphore(device, presentSemaphore, nullptr);
-		//vkDestroyFence(device, renderFence, nullptr);
-
-		//vkDestroySwapchainKHR(device, swapchain, nullptr);
-
-		////destroy the main renderpass
-		//vkDestroyRenderPass(device, renderPass, nullptr);
-
-		////destroy swapchain resources
-		//for (auto i = 0; i < framebuffers.size(); i += 1)
-		//{
-		//	vkDestroyFramebuffer(device, framebuffers[i], nullptr);
-		//	vkDestroyImageView(device, swapchainImageViews[i], nullptr);
-		//}
-		//vkDestroyCommandPool(device, commandPool, nullptr);
 
 		mainDeletionQueue.flush();
 
@@ -617,28 +619,39 @@ void VulkanEngine::draw()
 	rpInfo.clearValueCount = 1;
 	rpInfo.pClearValues = &clearValue;
 
+	// -------------- begin draw -----------------------------------
+
 	vkCmdBeginRenderPass(cmd, &rpInfo, VK_SUBPASS_CONTENTS_INLINE);
 
-	if (selectedShader == 0)
-	{
-		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, trianglePipeline);
-		vkCmdDraw(cmd, 3, 1, 0, 0);
-	}
-	else if (selectedShader == 1)
-	{
-		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, monochromeTrianglePipeline);
-		vkCmdDraw(cmd, 3, 1, 0, 0);
-	}
-	else
-	{
-		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, meshPipeline);
-		VkDeviceSize offset = 0;
-		vkCmdBindVertexBuffers(cmd, 0, 1, &triangleMesh.vertexBuffer.buffer, &offset);
-		vkCmdDraw(cmd, triangleMesh.vertices.size(), 1, 0, 0);
-	}
+	const glm::vec3 camPos{0.f, 0.f, -2.f};
+	const glm::mat4 view{glm::translate(glm::mat4(1.f), camPos)};
+
+	glm::mat4 projection{
+		glm::perspective(glm::radians(70.f),
+		                 static_cast<float>(windowExtent.width) / windowExtent.height,
+		                 0.1f, 200.f)
+	};
+	projection[1][1] *= -1;
+
+	// model rotation
+	const glm::mat4 model{glm::rotate(glm::mat4{1.0f}, glm::radians(frameNumber * 0.4f), glm::vec3(0, 1, 0))};
+
+	const glm::mat4 meshMatrix = projection * view * model;
+
+	MeshPushConstants constants{};
+	constants.renderMatrix = meshMatrix;
+
+	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, meshPipeline);
+	VkDeviceSize offset = 0;
+	vkCmdBindVertexBuffers(cmd, 0, 1, &triangleMesh.vertexBuffer.buffer, &offset);
+	vkCmdPushConstants(cmd, meshPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(MeshPushConstants),
+	                   &constants);
+	vkCmdDraw(cmd, triangleMesh.vertices.size(), 1, 0, 0);
 
 	vkCmdEndRenderPass(cmd);
 	vkCheck(vkEndCommandBuffer(cmd));
+
+	// -------------- end draw -------------------------------------
 
 	// we want to wait on the presentSemaphore, as that semaphore is signaled
 	// when the swapchain is ready
@@ -697,14 +710,14 @@ void VulkanEngine::run()
 			{
 				bQuit = true;
 			}
-			else if (e.type == SDL_KEYDOWN)
-			{
-				if (e.key.keysym.sym == SDLK_SPACE)
-				{
-					selectedShader += 1;
-					selectedShader %= 3;
-				}
-			}
+			//else if (e.type == SDL_KEYDOWN)
+			//{
+			//	if (e.key.keysym.sym == SDLK_SPACE)
+			//	{
+			//		selectedShader += 1;
+			//		selectedShader %= 3;
+			//	}
+			//}
 		}
 
 		draw();
