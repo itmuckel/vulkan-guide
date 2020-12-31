@@ -25,6 +25,16 @@ struct RenderObject
 	glm::mat4 transformMatrix;
 };
 
+struct FrameData
+{
+	VkSemaphore presentSemaphore{};
+	VkSemaphore renderSemaphore{};
+	VkFence renderFence{};
+
+	VkCommandPool commandPool{};
+	VkCommandBuffer mainCommandBuffer{};
+};
+
 struct DeletionQueue
 {
 	std::deque<std::function<void()>> deletors;
@@ -48,7 +58,7 @@ struct DeletionQueue
 
 struct Camera
 {
-	float height{ 0.f };
+	float height{0.f};
 
 	glm::vec3 pos{0.f, height, 3.f};
 	glm::vec3 up{0.f, 1.f, 0.f};
@@ -69,6 +79,8 @@ struct MeshPushConstants
 	glm::vec4 data{};
 	glm::mat4 renderMatrix{};
 };
+
+constexpr unsigned int FRAME_OVERLAP = 2;
 
 class VulkanEngine
 {
@@ -98,24 +110,18 @@ public:
 	AllocatedImage depthImage{};
 	VkFormat depthFormat{};
 
+	FrameData frames[FRAME_OVERLAP];
+
 	// -------- commands
 
 	VkQueue graphicsQueue{};
 	uint32_t graphicsQueueFamily{};
-
-	VkCommandPool commandPool{};
-	VkCommandBuffer mainCommandBuffer{};
 
 	// --------- render passes
 
 	VkRenderPass renderPass;
 	std::vector<VkFramebuffer> framebuffers;
 
-	// --------- synchronization
-
-	VkSemaphore presentSemaphore{};
-	VkSemaphore renderSemaphore{};
-	VkFence renderFence{};
 
 	// --------- memory
 
@@ -147,6 +153,8 @@ public:
 
 	// draw loop
 	void draw();
+
+	FrameData& getCurrentFrame();
 
 	void drawObjects(VkCommandBuffer cmd, RenderObject* first, int count) const;
 

@@ -175,22 +175,24 @@ void VulkanEngine::initVulkan()
 
 void VulkanEngine::initCommands()
 {
-	//create a command pool for commands submitted to the graphics queue.
-	//we also want the pool to allow for resetting of individual command buffers
+	// create a command pool for commands submitted to the graphics queue.
+	// we also want the pool to allow for resetting of individual command buffers
 	const auto commandPoolInfo = vkinit::commandPoolCreateInfo(
 		graphicsQueueFamily, VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
 
-	vkCheck(vkCreateCommandPool(device, &commandPoolInfo, nullptr, &commandPool));
-
-	//allocate the default command buffer that we will use for rendering
-	const auto cmdAllocInfo = vkinit::commandBufferAllocateInfo(commandPool, 1);
-
-	vkCheck(vkAllocateCommandBuffers(device, &cmdAllocInfo, &mainCommandBuffer));
-
-	mainDeletionQueue.pushFunction([=]()
+	for (auto& frame : frames)
 	{
-		vkDestroyCommandPool(device, commandPool, nullptr);
-	});
+		vkCheck(vkCreateCommandPool(device, &commandPoolInfo, nullptr, &frame.commandPool));
+
+		const auto cmdAllocInfo = vkinit::commandBufferAllocateInfo(frame.commandPool, 1);
+
+		vkCheck(vkAllocateCommandBuffers(device, &cmdAllocInfo, &frame.mainCommandBuffer));
+
+		mainDeletionQueue.pushFunction([=]()
+		{
+			vkDestroyCommandPool(device, frame.commandPool, nullptr);
+		});
+	}
 }
 
 void VulkanEngine::initDefaultRenderpass()
@@ -298,24 +300,27 @@ void VulkanEngine::initSyncStructures()
 	//we want to create the fence with the Create  Signaled flag, so we can wait on it before using it on a gpu command (for the first frame)
 	fenceCreateInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
 
-	vkCheck(vkCreateFence(device, &fenceCreateInfo, nullptr, &renderFence));
-
-	mainDeletionQueue.pushFunction([=]()
+	for (auto& frame : frames)
 	{
-		vkDestroyFence(device, renderFence, nullptr);
-	});
+		vkCheck(vkCreateFence(device, &fenceCreateInfo, nullptr, &frame.renderFence));
 
-	VkSemaphoreCreateInfo semaphoreCreateInfo{};
-	semaphoreCreateInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+		mainDeletionQueue.pushFunction([=]()
+		{
+			vkDestroyFence(device, frame.renderFence, nullptr);
+		});
 
-	vkCheck(vkCreateSemaphore(device, &semaphoreCreateInfo, nullptr, &presentSemaphore));
-	vkCheck(vkCreateSemaphore(device, &semaphoreCreateInfo, nullptr, &renderSemaphore));
+		VkSemaphoreCreateInfo semaphoreCreateInfo{};
+		semaphoreCreateInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
 
-	mainDeletionQueue.pushFunction([=]()
-	{
-		vkDestroySemaphore(device, presentSemaphore, nullptr);
-		vkDestroySemaphore(device, renderSemaphore, nullptr);
-	});
+		vkCheck(vkCreateSemaphore(device, &semaphoreCreateInfo, nullptr, &frame.presentSemaphore));
+		vkCheck(vkCreateSemaphore(device, &semaphoreCreateInfo, nullptr, &frame.renderSemaphore));
+
+		mainDeletionQueue.pushFunction([=]()
+		{
+			vkDestroySemaphore(device, frame.presentSemaphore, nullptr);
+			vkDestroySemaphore(device, frame.renderSemaphore, nullptr);
+		});
+	}
 }
 
 bool VulkanEngine::loadShaderModule(const char* filePath, VkShaderModule& outShaderModule)
@@ -365,7 +370,6 @@ bool VulkanEngine::loadShaderModule(const char* filePath, VkShaderModule& outSha
 
 void VulkanEngine::initPipelines()
 {
-
 	VkShaderModule meshVert{};
 	if (!loadShaderModule("../shaders/mesh.vert.spv", meshVert))
 	{
@@ -665,20 +669,20 @@ void VulkanEngine::cleanup()
 void VulkanEngine::draw()
 {
 	// wait until the GPU has finished rendering the last frame
-	vkCheck(vkWaitForFences(device, 1, &renderFence, true, UINT64_MAX));
-	vkCheck(vkResetFences(device, 1, &renderFence));
+	vkCheck(vkWaitForFences(device, 1, &getCurrentFrame().renderFence, true, UINT64_MAX));
+	vkCheck(vkResetFences(device, 1, &getCurrentFrame().renderFence));
 
 	// request image from the swapchain
 	uint32_t swapchainImageIndex{};
-	vkCheck(vkAcquireNextImageKHR(device, swapchain, UINT64_MAX, presentSemaphore,
+	vkCheck(vkAcquireNextImageKHR(device, swapchain, UINT64_MAX, getCurrentFrame().presentSemaphore,
 	                              nullptr, &swapchainImageIndex));
 
 	// now that we are sure that the commands finished executing,
 	// we can safely reset the command buffer to begin recording again.
-	vkCheck(vkResetCommandBuffer(mainCommandBuffer, 0));
+	vkCheck(vkResetCommandBuffer(getCurrentFrame().mainCommandBuffer, 0));
 
 	// naming it cmd for shorter writing
-	auto cmd = mainCommandBuffer;
+	auto cmd = getCurrentFrame().mainCommandBuffer;
 
 	// begin the command buffer recording. We will use this command buffer exactly once,
 	// so we want to let Vulkan know that
@@ -728,17 +732,17 @@ void VulkanEngine::draw()
 	submit.pWaitDstStageMask = &waitStage;
 
 	submit.waitSemaphoreCount = 1;
-	submit.pWaitSemaphores = &presentSemaphore;
+	submit.pWaitSemaphores = &getCurrentFrame().presentSemaphore;
 
 	submit.signalSemaphoreCount = 1;
-	submit.pSignalSemaphores = &renderSemaphore;
+	submit.pSignalSemaphores = &getCurrentFrame().renderSemaphore;
 
 	submit.commandBufferCount = 1;
 	submit.pCommandBuffers = &cmd;
 
 	// submit command buffer to the queue and execute it.
 	// renderFence will now block until the graphic commands finish execution
-	vkCheck(vkQueueSubmit(graphicsQueue, 1, &submit, renderFence));
+	vkCheck(vkQueueSubmit(graphicsQueue, 1, &submit, getCurrentFrame().renderFence));
 
 	// this will put the image we just rendered to into the visible window.
 	// we want to wait on the renderSemaphore for that, 
@@ -750,7 +754,7 @@ void VulkanEngine::draw()
 	presentInfo.pSwapchains = &swapchain;
 
 	presentInfo.waitSemaphoreCount = 1;
-	presentInfo.pWaitSemaphores = &renderSemaphore;
+	presentInfo.pWaitSemaphores = &getCurrentFrame().renderSemaphore;
 
 	presentInfo.pImageIndices = &swapchainImageIndex;
 
@@ -758,6 +762,11 @@ void VulkanEngine::draw()
 
 	//increase the number of frames drawn
 	frameNumber++;
+}
+
+FrameData& VulkanEngine::getCurrentFrame()
+{
+	return frames[frameNumber % FRAME_OVERLAP];
 }
 
 void VulkanEngine::drawObjects(const VkCommandBuffer cmd, RenderObject* first, int count) const
