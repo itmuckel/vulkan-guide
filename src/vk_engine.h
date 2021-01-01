@@ -45,6 +45,15 @@ struct GpuCameraData
 	glm::mat4 viewproj{};
 };
 
+struct GpuSceneData
+{
+	glm::vec4 fogColor; // w is for exponent
+	glm::vec4 fogDistances; // x for min, y for max, zw unused
+	glm::vec4 ambientColor;
+	glm::vec4 sunlightDirection; // w for sun power
+	glm::vec4 sunlightColor;
+};
+
 struct DeletionQueue
 {
 	std::deque<std::function<void()>> deletors;
@@ -101,6 +110,7 @@ public:
 	VkInstance instance{};
 	VkDebugUtilsMessengerEXT debugMessenger{};
 	VkPhysicalDevice chosenGpu{};
+	VkPhysicalDeviceProperties gpuProperties{};
 	VkDevice device{};
 	VkSurfaceKHR surface{};
 
@@ -140,6 +150,8 @@ public:
 	// --------- control flow
 
 	Camera camera{};
+	GpuSceneData sceneParameters{};
+	AllocatedBuffer sceneParametersBuffer{};
 
 	int frameNumber{0};
 	int selectedShader{0};
@@ -172,15 +184,19 @@ public:
 	// draw loop
 	void draw();
 
+	[[nodiscard]]
 	const FrameData& getCurrentFrame() const;
 
-	void drawObjects(VkCommandBuffer cmd, RenderObject* first, int count) const;
+	void drawObjects(VkCommandBuffer cmd, RenderObject* first, int count);
 
 	// run main loop
 	void run();
 
 private:
 	void initVulkan();
+
+	[[nodiscard]]
+	size_t padUniformBufferSize(size_t originalSize) const;
 
 	void initSwapchain();
 

@@ -28,7 +28,8 @@ namespace vkinit
 
 	VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo();
 
-	VkRenderPassBeginInfo renderPassBeginInfo(const VkRenderPass& renderPass, const VkExtent2D& windowExtent, const VkFramebuffer& framebuffer);
+	VkRenderPassBeginInfo renderPassBeginInfo(const VkRenderPass& renderPass, const VkExtent2D& windowExtent,
+	                                          const VkFramebuffer& framebuffer);
 
 	VkImageCreateInfo imageCreateInfo(VkFormat format, VkImageUsageFlags usageFlags, VkExtent3D extent);
 
@@ -37,4 +38,9 @@ namespace vkinit
 	VkPipelineDepthStencilStateCreateInfo depthStencilCreateInfo(
 		bool depthTest, bool depthWrite, VkCompareOp compareOp);
 
+	VkDescriptorSetLayoutBinding descriptorsetLayoutBinding(VkDescriptorType type, VkShaderStageFlags stageFlags,
+	                                                        uint32_t binding);
+
+	VkWriteDescriptorSet writeDescriptorBuffer(VkDescriptorType type, VkDescriptorSet dstSet,
+	                                           VkDescriptorBufferInfo* bufferInfo, uint32_t binding);
 }

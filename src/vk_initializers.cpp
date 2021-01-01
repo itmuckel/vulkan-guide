@@ -129,7 +129,7 @@ VkPipelineLayoutCreateInfo vkinit::pipelineLayoutCreateInfo()
 }
 
 VkRenderPassBeginInfo vkinit::renderPassBeginInfo(const VkRenderPass& renderPass, const VkExtent2D& windowExtent,
-	const VkFramebuffer& framebuffer)
+                                                  const VkFramebuffer& framebuffer)
 {
 	VkRenderPassBeginInfo info{};
 	info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
@@ -191,4 +191,34 @@ VkPipelineDepthStencilStateCreateInfo vkinit::depthStencilCreateInfo(const bool 
 	info.stencilTestEnable = VK_FALSE;
 
 	return info;
+}
+
+// descriptors
+
+VkDescriptorSetLayoutBinding vkinit::descriptorsetLayoutBinding(VkDescriptorType type, VkShaderStageFlags stageFlags,
+                                                                uint32_t binding)
+{
+	VkDescriptorSetLayoutBinding setbind{};
+	setbind.binding = binding;
+	setbind.descriptorCount = 1;
+	setbind.descriptorType = type;
+	setbind.pImmutableSamplers = nullptr;
+	setbind.stageFlags = stageFlags;
+
+	return setbind;
+}
+
+VkWriteDescriptorSet vkinit::writeDescriptorBuffer(const VkDescriptorType type, const VkDescriptorSet dstSet,
+                                                   VkDescriptorBufferInfo* const bufferInfo, const uint32_t binding)
+{
+	VkWriteDescriptorSet write{};
+	write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+
+	write.dstBinding = binding;
+	write.dstSet = dstSet;
+	write.descriptorCount = 1;
+	write.descriptorType = type;
+	write.pBufferInfo = bufferInfo;
+
+	return write;
 }
