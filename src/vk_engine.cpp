@@ -74,6 +74,100 @@ Mesh* VulkanEngine::getMesh(const std::string& name)
 	return &it->second;
 }
 
+AllocatedBuffer VulkanEngine::createBuffer(const size_t allocSize, const VkBufferUsageFlags usage,
+                                           const VmaMemoryUsage memoryUsage) const
+{
+	VkBufferCreateInfo bufferInfo{};
+	bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+
+	bufferInfo.size = allocSize;
+	bufferInfo.usage = usage;
+
+	VmaAllocationCreateInfo vmaAllocInfo{};
+	vmaAllocInfo.usage = memoryUsage;
+
+	AllocatedBuffer newBuffer{};
+	vkCheck(vmaCreateBuffer(allocator, &bufferInfo, &vmaAllocInfo,
+	                        &newBuffer.buffer, &newBuffer.allocation, nullptr));
+
+	return newBuffer;
+}
+
+void VulkanEngine::initDescriptors()
+{
+	std::vector<VkDescriptorPoolSize> sizes = {
+		{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 10}
+	};
+
+	VkDescriptorPoolCreateInfo poolInfo{};
+	poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+	poolInfo.flags = 0;
+	poolInfo.maxSets = 10;
+	poolInfo.poolSizeCount = static_cast<uint32_t>(sizes.size());
+	poolInfo.pPoolSizes = sizes.data();
+
+	vkCreateDescriptorPool(device, &poolInfo, nullptr, &descriptorPool);
+	mainDeletionQueue.pushFunction([=]()
+	{
+		vkDestroyDescriptorPool(device, descriptorPool, nullptr);
+	});
+
+	VkDescriptorSetLayoutBinding camBufferBinding{};
+	camBufferBinding.binding = 0;
+	camBufferBinding.descriptorCount = 1;
+	camBufferBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	camBufferBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+
+	VkDescriptorSetLayoutCreateInfo setInfo{};
+	setInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+	setInfo.bindingCount = 1;
+	setInfo.flags = 0;
+	setInfo.pBindings = &camBufferBinding;
+
+	vkCreateDescriptorSetLayout(device, &setInfo, nullptr, &globalSetLayout);
+	mainDeletionQueue.pushFunction([=]()
+	{
+		vkDestroyDescriptorSetLayout(device, globalSetLayout, nullptr);
+	});
+
+	for (auto i = 0; i < FRAME_OVERLAP; i += 1)
+	{
+		frames[i].cameraBuffer = createBuffer(sizeof(GpuCameraData),
+		                                      VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+		                                      VMA_MEMORY_USAGE_CPU_TO_GPU);
+
+		VkDescriptorSetAllocateInfo allocInfo{};
+		allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+		allocInfo.descriptorPool = descriptorPool;
+		allocInfo.descriptorSetCount = 1;
+		allocInfo.pSetLayouts = &globalSetLayout;
+
+		vkAllocateDescriptorSets(device, &allocInfo, &frames[i].globalDescriptor);
+
+		// make descriptorSet point to cameraBuffer
+
+		VkDescriptorBufferInfo bufferInfo{};
+		bufferInfo.buffer = frames[i].cameraBuffer.buffer;
+		bufferInfo.offset = 0;
+		bufferInfo.range = sizeof(GpuCameraData);
+
+		VkWriteDescriptorSet setWrite{};
+		setWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		setWrite.dstBinding = 0;
+		setWrite.dstSet = frames[i].globalDescriptor;
+		setWrite.descriptorCount = 1;
+		setWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+		setWrite.pBufferInfo = &bufferInfo;
+
+		vkUpdateDescriptorSets(device, 1, &setWrite, 0, nullptr);
+
+		mainDeletionQueue.pushFunction([=]()
+		{
+			vmaDestroyBuffer(allocator, frames[i].cameraBuffer.buffer, frames[i].cameraBuffer.allocation);
+		});
+	}
+}
+
 void VulkanEngine::init()
 {
 	// We initialize SDL and create a window with it.
@@ -95,6 +189,8 @@ void VulkanEngine::init()
 	initFramebuffers();
 
 	initSyncStructures();
+
+	initDescriptors();
 
 	initPipelines();
 
@@ -400,6 +496,9 @@ void VulkanEngine::initPipelines()
 	pipelineLayoutInfo.pushConstantRangeCount = 1;
 	pipelineLayoutInfo.pPushConstantRanges = &pushConstant;
 
+	pipelineLayoutInfo.setLayoutCount = 1;
+	pipelineLayoutInfo.pSetLayouts = &globalSetLayout;
+
 	VkPipelineLayout monochromePipelineLayout{};
 
 	vkCheck(vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &monochromePipelineLayout));
@@ -478,6 +577,9 @@ void VulkanEngine::initPipelines()
 
 	meshPipelineLayoutInfo.pushConstantRangeCount = 1;
 	meshPipelineLayoutInfo.pPushConstantRanges = &pushConstant;
+
+	meshPipelineLayoutInfo.setLayoutCount = 1;
+	meshPipelineLayoutInfo.pSetLayouts = &globalSetLayout;
 
 	VkPipelineLayout meshPipelineLayout{};
 
@@ -764,7 +866,7 @@ void VulkanEngine::draw()
 	frameNumber++;
 }
 
-FrameData& VulkanEngine::getCurrentFrame()
+const FrameData& VulkanEngine::getCurrentFrame() const
 {
 	return frames[frameNumber % FRAME_OVERLAP];
 }
@@ -776,6 +878,16 @@ void VulkanEngine::drawObjects(const VkCommandBuffer cmd, RenderObject* first, i
 	                                        static_cast<float>(windowExtent.width) / windowExtent.height,
 	                                        0.1f, 200.0f);
 	projection[1][1] *= -1;
+
+	GpuCameraData camData{};
+	camData.projection = projection;
+	camData.view = view;
+	camData.viewproj = projection * view;
+
+	void* data;
+	vmaMapMemory(allocator, getCurrentFrame().cameraBuffer.allocation, &data);
+	memcpy(data, &camData, sizeof(GpuCameraData));
+	vmaUnmapMemory(allocator, getCurrentFrame().cameraBuffer.allocation);
 
 	Mesh* lastMesh = nullptr;
 	Material* lastMaterial = nullptr;
@@ -793,15 +905,13 @@ void VulkanEngine::drawObjects(const VkCommandBuffer cmd, RenderObject* first, i
 		{
 			vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, object.material->pipeline);
 			lastMaterial = object.material;
+			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, object.material->pipelineLayout, 0, 1,
+			                        &getCurrentFrame().globalDescriptor, 0, nullptr);
 		}
 
 
-		const auto model = object.transformMatrix;
-		//final render matrix, that we are calculating on the cpu
-		const auto meshMatrix = projection * view * model;
-
 		MeshPushConstants constants{};
-		constants.renderMatrix = meshMatrix;
+		constants.renderMatrix = object.transformMatrix;
 
 		//upload the mesh to the gpu via pushconstants
 		vkCmdPushConstants(cmd, object.material->pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0,
@@ -860,6 +970,14 @@ void VulkanEngine::run()
 			if (e.type == SDL_QUIT)
 			{
 				bQuit = true;
+			}
+
+			if (e.type == SDL_KEYDOWN)
+			{
+				if (e.key.keysym.sym == SDLK_ESCAPE)
+				{
+					bQuit = true;
+				}
 			}
 		}
 

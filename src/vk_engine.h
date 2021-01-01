@@ -33,6 +33,16 @@ struct FrameData
 
 	VkCommandPool commandPool{};
 	VkCommandBuffer mainCommandBuffer{};
+
+	AllocatedBuffer cameraBuffer{};
+	VkDescriptorSet globalDescriptor{};
+};
+
+struct GpuCameraData
+{
+	glm::mat4 view{};
+	glm::mat4 projection{};
+	glm::mat4 viewproj{};
 };
 
 struct DeletionQueue
@@ -143,6 +153,14 @@ public:
 
 	Mesh* getMesh(const std::string& name);
 
+	VkDescriptorSetLayout globalSetLayout{};
+	VkDescriptorPool descriptorPool{};
+
+	[[nodiscard]]
+	AllocatedBuffer createBuffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage) const;
+
+	void initDescriptors();
+
 	// initializes everything in the engine
 	void init();
 
@@ -154,7 +172,7 @@ public:
 	// draw loop
 	void draw();
 
-	FrameData& getCurrentFrame();
+	const FrameData& getCurrentFrame() const;
 
 	void drawObjects(VkCommandBuffer cmd, RenderObject* first, int count) const;
 
