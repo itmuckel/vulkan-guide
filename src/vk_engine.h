@@ -34,8 +34,11 @@ struct FrameData
 	VkCommandPool commandPool{};
 	VkCommandBuffer mainCommandBuffer{};
 
-	AllocatedBuffer cameraBuffer{};
 	VkDescriptorSet globalDescriptor{};
+	AllocatedBuffer cameraBuffer{};
+
+	VkDescriptorSet objectDescriptor{};
+	AllocatedBuffer objectBuffer{};
 };
 
 struct GpuCameraData
@@ -47,16 +50,21 @@ struct GpuCameraData
 
 struct GpuSceneData
 {
-	glm::vec4 fogColor; // w is for exponent
-	glm::vec4 fogDistances; // x for min, y for max, zw unused
-	glm::vec4 ambientColor;
-	glm::vec4 sunlightDirection; // w for sun power
-	glm::vec4 sunlightColor;
+	glm::vec4 fogColor{}; // w is for exponent
+	glm::vec4 fogDistances{}; // x for min, y for max, zw unused
+	glm::vec4 ambientColor{};
+	glm::vec4 sunlightDirection{}; // w for sun power
+	glm::vec4 sunlightColor{};
+};
+
+struct GpuObjectData
+{
+	glm::mat4 modelMatrix{};
 };
 
 struct DeletionQueue
 {
-	std::deque<std::function<void()>> deletors;
+	std::deque<std::function<void()>> deletors{};
 
 	void pushFunction(std::function<void()>&& function)
 	{
@@ -165,8 +173,9 @@ public:
 
 	Mesh* getMesh(const std::string& name);
 
-	VkDescriptorSetLayout globalSetLayout{};
 	VkDescriptorPool descriptorPool{};
+	VkDescriptorSetLayout globalSetLayout{};
+	VkDescriptorSetLayout objectSetLayout{};
 
 	[[nodiscard]]
 	AllocatedBuffer createBuffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage) const;
