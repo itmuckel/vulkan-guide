@@ -18,6 +18,12 @@ struct Material
 	VkPipelineLayout pipelineLayout;
 };
 
+struct Texture
+{
+	AllocatedImage image;
+	VkImageView imageView;
+};
+
 struct RenderObject
 {
 	Mesh* mesh;
@@ -161,6 +167,12 @@ public:
 
 	VmaAllocator allocator{};
 
+	// --------- descriptors
+
+	VkDescriptorPool descriptorPool{};
+	VkDescriptorSetLayout globalSetLayout{};
+	VkDescriptorSetLayout objectSetLayout{};
+
 	// --------- control flow
 
 	Camera camera{};
@@ -173,6 +185,7 @@ public:
 	std::vector<RenderObject> renderables;
 	std::unordered_map<std::string, Material> materials;
 	std::unordered_map<std::string, Mesh> meshes;
+	std::unordered_map<std::string, Texture> loadedTextures;
 
 	UploadContext uploadContext{};
 
@@ -181,9 +194,7 @@ public:
 
 	Mesh* getMesh(const std::string& name);
 
-	VkDescriptorPool descriptorPool{};
-	VkDescriptorSetLayout globalSetLayout{};
-	VkDescriptorSetLayout objectSetLayout{};
+	void loadImages();
 
 	[[nodiscard]]
 	AllocatedBuffer createBuffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage) const;
@@ -234,7 +245,6 @@ private:
 	void initPipelines();
 
 	void loadMeshes();
-
 };
 
 class PipelineBuilder

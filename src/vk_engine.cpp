@@ -11,11 +11,12 @@
 #include <iostream>
 #include <algorithm>
 #include <glm/gtx/transform.hpp>
-#include "vk_initializers.h"
-#include "vk_types.h"
 #include <VkBootstrap.h>
 #define VMA_IMPLEMENTATION
 #include "vk_mem_alloc.h"
+#include "vk_initializers.h"
+#include "vk_types.h"
+#include "vk_textures.h"
 
 
 void vkCheck(const VkResult x)
@@ -72,6 +73,24 @@ Mesh* VulkanEngine::getMesh(const std::string& name)
 	}
 
 	return &it->second;
+}
+
+void VulkanEngine::loadImages()
+{
+	Texture lostEmpire{};
+
+	vkutil::loadImageFromFile(*this, "../assets/lost_empire-RGBA.png", lostEmpire.image);
+
+	auto imageInfo = vkinit::imageviewCreateInfo(VK_FORMAT_R8G8B8A8_UNORM, lostEmpire.image.image,
+	                                             VK_IMAGE_ASPECT_COLOR_BIT);
+	vkCreateImageView(device, &imageInfo, nullptr, &lostEmpire.imageView);
+
+	mainDeletionQueue.pushFunction([=]()
+	{
+		vkDestroyImageView(device, lostEmpire.imageView, nullptr);
+	});
+
+	loadedTextures["empire_diffuse"] = lostEmpire;
 }
 
 AllocatedBuffer VulkanEngine::createBuffer(const size_t allocSize, const VkBufferUsageFlags usage,
@@ -277,6 +296,8 @@ void VulkanEngine::init()
 	initDescriptors();
 
 	initPipelines();
+
+	loadImages();
 
 	loadMeshes();
 
