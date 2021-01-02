@@ -107,6 +107,12 @@ struct MeshPushConstants
 	glm::mat4 renderMatrix{};
 };
 
+struct UploadContext
+{
+	VkFence uploadFence{};
+	VkCommandPool commandPool{};
+};
+
 constexpr unsigned int FRAME_OVERLAP = 2;
 
 class VulkanEngine
@@ -168,6 +174,8 @@ public:
 	std::unordered_map<std::string, Material> materials;
 	std::unordered_map<std::string, Mesh> meshes;
 
+	UploadContext uploadContext{};
+
 	Material* createMaterial(VkPipeline pipeline, VkPipelineLayout layout, const std::string& name);
 	Material* getMaterial(const std::string& name);
 
@@ -181,6 +189,9 @@ public:
 	AllocatedBuffer createBuffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage) const;
 
 	void initDescriptors();
+
+	void immediateSubmit(std::function<void(VkCommandBuffer vmd)>&& function) const;
+	void uploadMesh(Mesh& mesh);
 
 	// initializes everything in the engine
 	void init();
@@ -224,7 +235,6 @@ private:
 
 	void loadMeshes();
 
-	void uploadMesh(Mesh& mesh);
 };
 
 class PipelineBuilder

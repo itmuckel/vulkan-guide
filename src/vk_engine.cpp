@@ -225,6 +225,33 @@ void VulkanEngine::initDescriptors()
 	}
 }
 
+void VulkanEngine::immediateSubmit(std::function<void(VkCommandBuffer vmd)>&& function) const
+{
+	auto cmdAllocInfo = vkinit::commandBufferAllocateInfo(uploadContext.commandPool);
+
+	VkCommandBuffer cmd{};
+	vkCheck(vkAllocateCommandBuffers(device, &cmdAllocInfo, &cmd));
+
+	const auto cmdBeginInfo = vkinit::commandBufferBeginInfo(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+
+	vkCheck(vkBeginCommandBuffer(cmd, &cmdBeginInfo));
+
+	function(cmd);
+
+	vkCheck(vkEndCommandBuffer(cmd));
+
+	auto submit = vkinit::submitInfo(&cmd);
+
+	// uploadFence will block until the graphic commands finish execution
+	vkCheck(vkQueueSubmit(graphicsQueue, 1, &submit, uploadContext.uploadFence));
+
+	vkWaitForFences(device, 1, &uploadContext.uploadFence, true, UINT64_MAX);
+	vkResetFences(device, 1, &uploadContext.uploadFence);
+
+	// frees command buffer too
+	vkResetCommandPool(device, uploadContext.commandPool, 0);
+}
+
 void VulkanEngine::init()
 {
 	// We initialize SDL and create a window with it.
@@ -344,6 +371,14 @@ size_t VulkanEngine::padUniformBufferSize(const size_t originalSize) const
 
 void VulkanEngine::initCommands()
 {
+	const auto uploadCommandPoolInfo = vkinit::commandPoolCreateInfo(graphicsQueueFamily);
+	vkCheck(vkCreateCommandPool(device, &uploadCommandPoolInfo, nullptr, &uploadContext.commandPool));
+
+	mainDeletionQueue.pushFunction([=]()
+	{
+		vkDestroyCommandPool(device, uploadContext.commandPool, nullptr);
+	});
+
 	// create a command pool for commands submitted to the graphics queue.
 	// we also want the pool to allow for resetting of individual command buffers
 	const auto commandPoolInfo = vkinit::commandPoolCreateInfo(
@@ -464,6 +499,18 @@ void VulkanEngine::initFramebuffers()
 
 void VulkanEngine::initSyncStructures()
 {
+	VkFenceCreateInfo uploadFenceCreateInfo{};
+	uploadFenceCreateInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+	//we want to create the fence with the Create  Signaled flag, so we can wait on it before using it on a gpu command (for the first frame)
+	uploadFenceCreateInfo.flags = 0;
+
+	vkCheck(vkCreateFence(device, &uploadFenceCreateInfo, nullptr, &uploadContext.uploadFence));
+
+	mainDeletionQueue.pushFunction([=]()
+	{
+		vkDestroyFence(device, uploadContext.uploadFence, nullptr);
+	});
+
 	VkFenceCreateInfo fenceCreateInfo{};
 	fenceCreateInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
 	//we want to create the fence with the Create  Signaled flag, so we can wait on it before using it on a gpu command (for the first frame)
@@ -707,29 +754,59 @@ void VulkanEngine::loadMeshes()
 
 void VulkanEngine::uploadMesh(Mesh& mesh)
 {
-	VkBufferCreateInfo bufferInfo{};
-	bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-	bufferInfo.size = mesh.vertices.size() * sizeof(Vertex);
-	bufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+	// create CPU source buffer
+	VkBufferCreateInfo stagingBufferInfo{};
+	stagingBufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+	stagingBufferInfo.size = mesh.vertices.size() * sizeof(Vertex);
+	stagingBufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
 
 	VmaAllocationCreateInfo vmaAllocInfo{};
-	vmaAllocInfo.usage = VMA_MEMORY_USAGE_CPU_TO_GPU;
+	vmaAllocInfo.usage = VMA_MEMORY_USAGE_CPU_ONLY;
 
-	vkCheck(vmaCreateBuffer(allocator, &bufferInfo, &vmaAllocInfo, &mesh.vertexBuffer.buffer,
-	                        &mesh.vertexBuffer.allocation, nullptr));
+	AllocatedBuffer stagingBuffer{};
 
-	// copy the vertex data to GPU
+	vkCheck(vmaCreateBuffer(allocator, &stagingBufferInfo, &vmaAllocInfo,
+	                        &stagingBuffer.buffer,
+	                        &stagingBuffer.allocation,
+	                        nullptr));
+
+	// copy the vertex data
 	void* data{};
-	vmaMapMemory(allocator, mesh.vertexBuffer.allocation, &data);
+	vmaMapMemory(allocator, stagingBuffer.allocation, &data);
 	memcpy(data, mesh.vertices.data(), mesh.vertices.size() * sizeof(Vertex));
-	vmaUnmapMemory(allocator, mesh.vertexBuffer.allocation);
+	vmaUnmapMemory(allocator, stagingBuffer.allocation);
 
+	// create GPU only buffer
+	VkBufferCreateInfo vertexBufferInfo{};
+	vertexBufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+	vertexBufferInfo.size = stagingBufferInfo.size;
+	vertexBufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+
+	vmaAllocInfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
+
+	vkCheck(vmaCreateBuffer(allocator, &vertexBufferInfo, &vmaAllocInfo,
+	                        &mesh.vertexBuffer.buffer,
+	                        &mesh.vertexBuffer.allocation,
+	                        nullptr));
+
+	// copy
+	immediateSubmit([=](VkCommandBuffer cmd)
+	{
+		VkBufferCopy copy{};
+		copy.srcOffset = 0;
+		copy.dstOffset = 0;
+		copy.size = stagingBufferInfo.size;
+
+		vkCmdCopyBuffer(cmd, stagingBuffer.buffer, mesh.vertexBuffer.buffer,
+		                1, &copy);
+	});
 
 	mainDeletionQueue.pushFunction([=]()
 	{
 		vmaDestroyBuffer(allocator, mesh.vertexBuffer.buffer, mesh.vertexBuffer.allocation);
-		//vmaDestroyAllocator(allocator);
 	});
+
+	vmaDestroyBuffer(allocator, stagingBuffer.buffer, stagingBuffer.allocation);
 }
 
 VkPipeline PipelineBuilder::buildPipeline(const VkDevice device, const VkRenderPass pass)
@@ -862,9 +939,7 @@ void VulkanEngine::draw()
 
 	// begin the command buffer recording. We will use this command buffer exactly once,
 	// so we want to let Vulkan know that
-	VkCommandBufferBeginInfo cmdBeginInfo{};
-	cmdBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-	cmdBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+	const auto cmdBeginInfo = vkinit::commandBufferBeginInfo(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 
 	vkCheck(vkBeginCommandBuffer(cmd, &cmdBeginInfo));
 
@@ -900,8 +975,7 @@ void VulkanEngine::draw()
 	// when the swapchain is ready
 	// we will signal the renderSemaphore, to signal that rendering has finished
 
-	VkSubmitInfo submit{};
-	submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+	auto submit = vkinit::submitInfo(&cmd);
 
 	constexpr VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 

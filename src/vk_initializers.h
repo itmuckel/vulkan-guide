@@ -13,6 +13,8 @@ namespace vkinit
 	VkCommandBufferAllocateInfo commandBufferAllocateInfo(VkCommandPool pool, uint32_t count = 1,
 	                                                      VkCommandBufferLevel level = VK_COMMAND_BUFFER_LEVEL_PRIMARY);
 
+	VkCommandBufferBeginInfo commandBufferBeginInfo(VkCommandBufferUsageFlags flags);
+
 	VkPipelineShaderStageCreateInfo pipelineShaderStageCreateInfo(VkShaderStageFlagBits stage,
 	                                                              VkShaderModule shaderModule);
 
@@ -43,4 +45,5 @@ namespace vkinit
 
 	VkWriteDescriptorSet writeDescriptorBuffer(VkDescriptorType type, VkDescriptorSet dstSet,
 	                                           VkDescriptorBufferInfo* bufferInfo, uint32_t binding);
+	VkSubmitInfo submitInfo(VkCommandBuffer* cmd);
 }

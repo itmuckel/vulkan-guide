@@ -18,8 +18,17 @@ VkCommandBufferAllocateInfo vkinit::commandBufferAllocateInfo(const VkCommandPoo
 	VkCommandBufferAllocateInfo info{};
 	info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
 	info.commandPool = pool;
-	info.commandBufferCount = 1;
-	info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+	info.commandBufferCount = count;
+	info.level = level;
+
+	return info;
+}
+
+VkCommandBufferBeginInfo vkinit::commandBufferBeginInfo(VkCommandBufferUsageFlags flags)
+{
+	VkCommandBufferBeginInfo info{};
+	info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+	info.flags = flags;
 
 	return info;
 }
@@ -221,4 +230,17 @@ VkWriteDescriptorSet vkinit::writeDescriptorBuffer(const VkDescriptorType type, 
 	write.pBufferInfo = bufferInfo;
 
 	return write;
+}
+
+VkSubmitInfo vkinit::submitInfo(VkCommandBuffer* cmd)
+{
+	VkSubmitInfo info{};
+	info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+
+	info.waitSemaphoreCount = 0;
+	info.commandBufferCount = 1;
+	info.pCommandBuffers = cmd;
+	info.signalSemaphoreCount = 0;
+
+	return info;
 }
