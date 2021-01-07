@@ -117,6 +117,19 @@ AllocatedBuffer VulkanEngine::createBuffer(const size_t allocSize, const VkBuffe
 
 void VulkanEngine::initDescriptors()
 {
+	descriptorAllocator = DescriptorAllocator{};
+	descriptorAllocator.init(device);
+
+	descriptorLayoutCache = DescriptorLayoutCache{};
+	descriptorLayoutCache.init(device);
+
+	mainDeletionQueue.pushFunction([=]()
+	{
+		descriptorAllocator.cleanup();
+		descriptorLayoutCache.cleanup();
+	});
+
+
 	const auto sceneParamBufferSize = FRAME_OVERLAP * padUniformBufferSize(sizeof(GpuSceneData));
 	sceneParametersBuffer = createBuffer(sceneParamBufferSize,
 	                                     VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
@@ -124,26 +137,6 @@ void VulkanEngine::initDescriptors()
 	mainDeletionQueue.pushFunction([=]()
 	{
 		vmaDestroyBuffer(allocator, sceneParametersBuffer.buffer, sceneParametersBuffer.allocation);
-	});
-
-	std::vector<VkDescriptorPoolSize> sizes = {
-		{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 10},
-		{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 10},
-		{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 10},
-		{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 10},
-	};
-
-	VkDescriptorPoolCreateInfo poolInfo{};
-	poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-	poolInfo.flags = 0;
-	poolInfo.maxSets = 10;
-	poolInfo.poolSizeCount = static_cast<uint32_t>(sizes.size());
-	poolInfo.pPoolSizes = sizes.data();
-
-	vkCreateDescriptorPool(device, &poolInfo, nullptr, &descriptorPool);
-	mainDeletionQueue.pushFunction([=]()
-	{
-		vkDestroyDescriptorPool(device, descriptorPool, nullptr);
 	});
 
 	const auto cameraBind = vkinit::descriptorsetLayoutBinding(
@@ -188,15 +181,9 @@ void VulkanEngine::initDescriptors()
 	textureSetInfo.flags = 0;
 	textureSetInfo.pBindings = &textureBind;
 
-	vkCreateDescriptorSetLayout(device, &setInfo, nullptr, &globalSetLayout);
-	vkCreateDescriptorSetLayout(device, &objectSetInfo, nullptr, &objectSetLayout);
-	vkCreateDescriptorSetLayout(device, &textureSetInfo, nullptr, &singleTextureSetLayout);
-	mainDeletionQueue.pushFunction([=]()
-	{
-		vkDestroyDescriptorSetLayout(device, globalSetLayout, nullptr);
-		vkDestroyDescriptorSetLayout(device, objectSetLayout, nullptr);
-		vkDestroyDescriptorSetLayout(device, singleTextureSetLayout, nullptr);
-	});
+	globalSetLayout = descriptorLayoutCache.createDescriptorLayout(&setInfo);
+	objectSetLayout = descriptorLayoutCache.createDescriptorLayout(&objectSetInfo);
+	singleTextureSetLayout = descriptorLayoutCache.createDescriptorLayout(&textureSetInfo);
 
 	for (auto i = 0; i < FRAME_OVERLAP; i += 1)
 	{
@@ -214,21 +201,8 @@ void VulkanEngine::initDescriptors()
 			vmaDestroyBuffer(allocator, frames[i].cameraBuffer.buffer, frames[i].cameraBuffer.allocation);
 		});
 
-		VkDescriptorSetAllocateInfo allocInfo{};
-		allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-		allocInfo.descriptorPool = descriptorPool;
-		allocInfo.descriptorSetCount = 1;
-		allocInfo.pSetLayouts = &globalSetLayout;
-
-		vkAllocateDescriptorSets(device, &allocInfo, &frames[i].globalDescriptor);
-
-		VkDescriptorSetAllocateInfo objectAllocInfo{};
-		objectAllocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-		objectAllocInfo.descriptorPool = descriptorPool;
-		objectAllocInfo.descriptorSetCount = 1;
-		objectAllocInfo.pSetLayouts = &objectSetLayout;
-
-		vkAllocateDescriptorSets(device, &objectAllocInfo, &frames[i].objectDescriptor);
+		descriptorAllocator.allocate(&frames[i].globalDescriptor, globalSetLayout);
+		descriptorAllocator.allocate(&frames[i].objectDescriptor, objectSetLayout);
 
 		VkDescriptorBufferInfo cameraInfo{};
 		cameraInfo.buffer = frames[i].cameraBuffer.buffer;
@@ -245,20 +219,14 @@ void VulkanEngine::initDescriptors()
 		objectBufferInfo.offset = 0;
 		objectBufferInfo.range = sizeof(GpuObjectData) * maxObjects;
 
-		const auto cameraWrite = vkinit::writeDescriptorBuffer(
-			VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, frames[i].globalDescriptor,
-			&cameraInfo, 0);
+		DescriptorBuilder::begin(&descriptorLayoutCache, &descriptorAllocator)
+			.bindBuffer(0, &cameraInfo, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, setInfo.pBindings[0].stageFlags)
+			.bindBuffer(1, &sceneInfo, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, setInfo.pBindings[1].stageFlags)
+			.build(frames[i].globalDescriptor);
 
-		const auto sceneWrite = vkinit::writeDescriptorBuffer(
-			VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, frames[i].globalDescriptor,
-			&sceneInfo, 1);
-
-		const auto objectWrite = vkinit::writeDescriptorBuffer(
-			VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, frames[i].objectDescriptor,
-			&objectBufferInfo, 0);
-
-		VkWriteDescriptorSet setWrites[] = {cameraWrite, sceneWrite, objectWrite};
-		vkUpdateDescriptorSets(device, 3, setWrites, 0, nullptr);
+		DescriptorBuilder::begin(&descriptorLayoutCache, &descriptorAllocator)
+			.bindBuffer(0, &objectBufferInfo, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, objectSetInfo.pBindings[0].stageFlags)
+			.build(frames[i].objectDescriptor);
 	}
 }
 
@@ -339,23 +307,16 @@ void VulkanEngine::initScene()
 
 	auto texturedMaterial = getMaterial("texturedmesh");
 
-	VkDescriptorSetAllocateInfo allocInfo{};
-	allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-	allocInfo.descriptorPool = descriptorPool;
-	allocInfo.descriptorSetCount = 1;
-	allocInfo.pSetLayouts = &singleTextureSetLayout;
-
-	vkAllocateDescriptorSets(device, &allocInfo, &texturedMaterial->textureSet);
+	descriptorAllocator.allocate(&texturedMaterial->textureSet, singleTextureSetLayout);
 
 	VkDescriptorImageInfo imageBufferInfo{};
 	imageBufferInfo.sampler = blockySampler;
 	imageBufferInfo.imageView = loadedTextures["empire_diffuse"].imageView;
 	imageBufferInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
-	auto texture1 = vkinit::writeDescriptorImage(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-	                                             texturedMaterial->textureSet, &imageBufferInfo, 0);
-
-	vkUpdateDescriptorSets(device, 1, &texture1, 0, nullptr);
+	DescriptorBuilder::begin(&descriptorLayoutCache, &descriptorAllocator)
+		.bindImage(0, &imageBufferInfo, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
+		.build(texturedMaterial->textureSet);
 
 	RenderObject map{};
 	map.mesh = getMesh("empire");
@@ -614,7 +575,7 @@ void VulkanEngine::initSyncStructures()
 	}
 }
 
-bool VulkanEngine::loadShaderModule(const char* filePath, VkShaderModule& outShaderModule)
+bool VulkanEngine::loadShaderModule(const char* filePath, VkShaderModule& outShaderModule) const
 {
 	//open the file. With cursor at the end
 	std::ifstream file(filePath, std::ios::ate | std::ios::binary);

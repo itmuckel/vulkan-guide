@@ -55,6 +55,8 @@ public:
 
 	void init(VkDevice newDevice);
 	void cleanup();
+
+	[[nodiscard]]
 	VkDescriptorSetLayout createDescriptorLayout(VkDescriptorSetLayoutCreateInfo* info);
 
 private:

@@ -10,6 +10,8 @@
 #include <vk_types.h>
 #include <glm/glm.hpp>
 
+
+#include "vk_descriptors.h"
 #include "vk_mesh.h"
 
 struct Material
@@ -171,6 +173,9 @@ public:
 	// --------- descriptors
 
 	VkDescriptorPool descriptorPool{};
+	DescriptorLayoutCache descriptorLayoutCache{};
+	DescriptorAllocator descriptorAllocator{};
+
 	VkDescriptorSetLayout globalSetLayout{};
 	VkDescriptorSetLayout objectSetLayout{};
 	VkDescriptorSetLayout singleTextureSetLayout{};
@@ -242,7 +247,7 @@ private:
 	void initSyncStructures();
 
 	/// loads a shader module from a spir-v file. Returns false if it errors
-	bool loadShaderModule(const char* filePath, VkShaderModule& outShaderModule);
+	bool loadShaderModule(const char* filePath, VkShaderModule& outShaderModule) const;
 
 	void initPipelines();
 
