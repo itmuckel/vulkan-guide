@@ -232,6 +232,37 @@ VkWriteDescriptorSet vkinit::writeDescriptorBuffer(const VkDescriptorType type, 
 	return write;
 }
 
+VkSamplerCreateInfo vkinit::samplerCreateInfo(VkFilter filters,
+                                              VkSamplerAddressMode samplerAdressMode
+	                                              = VK_SAMPLER_ADDRESS_MODE_REPEAT)
+{
+	VkSamplerCreateInfo info{};
+	info.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+
+	info.magFilter = filters;
+	info.minFilter = filters;
+	info.addressModeU = samplerAdressMode;
+	info.addressModeV = samplerAdressMode;
+	info.addressModeW = samplerAdressMode;
+
+	return info;
+}
+
+VkWriteDescriptorSet vkinit::writeDescriptorImage(VkDescriptorType type, VkDescriptorSet dstSet,
+                                                  VkDescriptorImageInfo* imageInfo, uint32_t binding)
+{
+	VkWriteDescriptorSet write{};
+	write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+
+	write.dstBinding = binding;
+	write.dstSet = dstSet;
+	write.descriptorCount = 1;
+	write.descriptorType = type;
+	write.pImageInfo = imageInfo;
+
+	return write;
+}
+
 VkSubmitInfo vkinit::submitInfo(VkCommandBuffer* cmd)
 {
 	VkSubmitInfo info{};

@@ -14,30 +14,35 @@ VertexInputDescription Vertex::getVertexDescription()
 
 	description.bindings.push_back(mainBinding);
 
-	// Position will be stored at Location 0
 	VkVertexInputAttributeDescription positionAttribute{};
 	positionAttribute.binding = 0;
 	positionAttribute.location = 0;
 	positionAttribute.format = VK_FORMAT_R32G32B32_SFLOAT;
 	positionAttribute.offset = offsetof(Vertex, position);
 
-	// Normal will be stored at Location 1
 	VkVertexInputAttributeDescription normalAttribute{};
 	normalAttribute.binding = 0;
 	normalAttribute.location = 1;
 	normalAttribute.format = VK_FORMAT_R32G32B32_SFLOAT;
 	normalAttribute.offset = offsetof(Vertex, normal);
 
-	// Color will be stored at Location 2
 	VkVertexInputAttributeDescription colorAttribute{};
 	colorAttribute.binding = 0;
 	colorAttribute.location = 2;
 	colorAttribute.format = VK_FORMAT_R32G32B32_SFLOAT;
 	colorAttribute.offset = offsetof(Vertex, color);
 
+	VkVertexInputAttributeDescription uvAttribute{};
+	uvAttribute.binding = 0;
+	uvAttribute.location = 3;
+	uvAttribute.format = VK_FORMAT_R32G32_SFLOAT;
+	uvAttribute.offset = offsetof(Vertex, uv);
+
 	description.attributes.push_back(positionAttribute);
 	description.attributes.push_back(normalAttribute);
 	description.attributes.push_back(colorAttribute);
+	description.attributes.push_back(uvAttribute);
+
 	return description;
 }
 
@@ -87,6 +92,9 @@ bool Mesh::loadFromObj(const char* filename)
 				const auto nx = attrib.normals[3 * idx.normal_index + 0];
 				const auto ny = attrib.normals[3 * idx.normal_index + 1];
 				const auto nz = attrib.normals[3 * idx.normal_index + 2];
+				// vertex uv
+				const auto ux = attrib.texcoords[2 * idx.texcoord_index + 0];
+				const auto uy = attrib.texcoords[2 * idx.texcoord_index + 1];
 
 				// copy it into our vertex
 				Vertex newVert{};
@@ -97,6 +105,9 @@ bool Mesh::loadFromObj(const char* filename)
 				newVert.normal.x = nx;
 				newVert.normal.y = ny;
 				newVert.normal.z = nz;
+
+				newVert.uv.x = ux;
+				newVert.uv.y = 1 - uy;
 
 				// we are setting the vertex color as the vertex normal. This is just for display purposes
 				newVert.color = newVert.normal;

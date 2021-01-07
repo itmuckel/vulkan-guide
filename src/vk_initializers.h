@@ -45,5 +45,10 @@ namespace vkinit
 
 	VkWriteDescriptorSet writeDescriptorBuffer(VkDescriptorType type, VkDescriptorSet dstSet,
 	                                           VkDescriptorBufferInfo* bufferInfo, uint32_t binding);
+
+	VkSamplerCreateInfo samplerCreateInfo(VkFilter filters, VkSamplerAddressMode samplerAdressMode);
+
+	VkWriteDescriptorSet writeDescriptorImage(VkDescriptorType type, VkDescriptorSet dstSet, VkDescriptorImageInfo* imageInfo, uint32_t binding);
+
 	VkSubmitInfo submitInfo(VkCommandBuffer* cmd);
 }

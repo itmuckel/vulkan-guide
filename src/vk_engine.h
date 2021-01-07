@@ -14,21 +14,22 @@
 
 struct Material
 {
-	VkPipeline pipeline;
-	VkPipelineLayout pipelineLayout;
+	VkDescriptorSet textureSet;
+	VkPipeline pipeline{};
+	VkPipelineLayout pipelineLayout{};
 };
 
 struct Texture
 {
-	AllocatedImage image;
-	VkImageView imageView;
+	AllocatedImage image{};
+	VkImageView imageView{};
 };
 
 struct RenderObject
 {
-	Mesh* mesh;
-	Material* material;
-	glm::mat4 transformMatrix;
+	Mesh* mesh{};
+	Material* material{};
+	glm::mat4 transformMatrix{};
 };
 
 struct FrameData
@@ -172,6 +173,7 @@ public:
 	VkDescriptorPool descriptorPool{};
 	VkDescriptorSetLayout globalSetLayout{};
 	VkDescriptorSetLayout objectSetLayout{};
+	VkDescriptorSetLayout singleTextureSetLayout{};
 
 	// --------- control flow
 
