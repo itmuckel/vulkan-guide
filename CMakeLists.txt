@@ -11,6 +11,7 @@ project("vulkan_guide")
 
 find_package(Vulkan REQUIRED)
 
+add_subdirectory(assetlib)
 add_subdirectory(third_party)
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${PROJECT_SOURCE_DIR}/bin")

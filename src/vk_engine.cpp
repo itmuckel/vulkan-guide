@@ -295,7 +295,7 @@ void VulkanEngine::init()
 
 void VulkanEngine::initScene()
 {
-	auto samplerInfo = vkinit::samplerCreateInfo(VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_REPEAT);
+	auto samplerInfo = vkinit::samplerCreateInfo(VK_FILTER_NEAREST, VK_SAMPLER_ADDRESS_MODE_REPEAT);
 
 	VkSampler blockySampler{};
 	vkCreateSampler(device, &samplerInfo, nullptr, &blockySampler);
