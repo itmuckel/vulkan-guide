@@ -29,12 +29,6 @@ layout(std140, set = 1, binding = 0) readonly buffer ObjectBuffer
 	ObjectData objects[];
 } objectBuffer;
 
-layout (push_constant) uniform constants 
-{
-	vec4 data;
-	mat4 renderMatrix;
-} PushConstants;
-
 void main() 
 {	
 	mat4 modelMatrix = objectBuffer.objects[gl_BaseInstance].model;

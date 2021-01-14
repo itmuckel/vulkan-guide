@@ -647,111 +647,88 @@ void VulkanEngine::initPipelines()
 	}
 
 	// build the pipeline layout that controls the inputs/outputs of the shader
-	auto pipelineLayoutInfo = vkinit::pipelineLayoutCreateInfo();
+	auto pipeline_layout_info = vkinit::pipelineLayoutCreateInfo();
 
-	// used to change mvp matrix dynamically
-	VkPushConstantRange pushConstant{};
-	pushConstant.offset = 0;
-	pushConstant.size = sizeof(MeshPushConstants);
-	pushConstant.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+	VkDescriptorSetLayout set_layouts[] = {globalSetLayout, objectSetLayout};
+	pipeline_layout_info.setLayoutCount = 2;
+	pipeline_layout_info.pSetLayouts = set_layouts;
 
-	pipelineLayoutInfo.pushConstantRangeCount = 1;
-	pipelineLayoutInfo.pPushConstantRanges = &pushConstant;
+	VkPipelineLayout monochrome_pipeline_layout{};
 
-	VkDescriptorSetLayout setLayouts[] = {globalSetLayout, objectSetLayout};
-	pipelineLayoutInfo.setLayoutCount = 2;
-	pipelineLayoutInfo.pSetLayouts = setLayouts;
+	vkCheck(vkCreatePipelineLayout(device, &pipeline_layout_info, nullptr, &monochrome_pipeline_layout));
 
-	VkPipelineLayout monochromePipelineLayout{};
-
-	vkCheck(vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &monochromePipelineLayout));
-
-	PipelineBuilder pipelineBuilder{};
+	PipelineBuilder pipeline_builder{};
 
 	// vertex input controls how to read vertices from vertex buffers. We arent using it yet
-	pipelineBuilder.vertexInputInfo = vkinit::vertexInputStateCreateInfo();
+	pipeline_builder.vertexInputInfo = vkinit::vertexInputStateCreateInfo();
 
-	auto vertexDescription = Vertex::getVertexDescription();
+	auto vertex_description = Vertex::getVertexDescription();
 
 	// connect the pipeline builder vertex input info to the one we get from Vertex
-	pipelineBuilder.vertexInputInfo.pVertexAttributeDescriptions = vertexDescription.attributes.data();
-	pipelineBuilder.vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(
-		vertexDescription.attributes.size());
+	pipeline_builder.vertexInputInfo.pVertexAttributeDescriptions = vertex_description.attributes.data();
+	pipeline_builder.vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(
+		vertex_description.attributes.size());
 
-	pipelineBuilder.vertexInputInfo.pVertexBindingDescriptions = vertexDescription.bindings.data();
-	pipelineBuilder.vertexInputInfo.vertexBindingDescriptionCount = static_cast<uint32_t>(
-		vertexDescription.bindings.size());
+	pipeline_builder.vertexInputInfo.pVertexBindingDescriptions = vertex_description.bindings.data();
+	pipeline_builder.vertexInputInfo.vertexBindingDescriptionCount = static_cast<uint32_t>(
+		vertex_description.bindings.size());
 
-	// input assembly is the configuration for drawing triangle lists, strips, or individual points.
-	// we are just going to draw triangle list
-	pipelineBuilder.inputAssembly = vkinit::inputAssemblyCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
-
-	// build viewport and scissor from the swapchain extents
-	pipelineBuilder.viewport.x = 0.0f;
-	pipelineBuilder.viewport.y = 0.0f;
-	pipelineBuilder.viewport.width = static_cast<float>(windowExtent.width);
-	pipelineBuilder.viewport.height = static_cast<float>(windowExtent.height);
-	pipelineBuilder.viewport.minDepth = 0.0f;
-	pipelineBuilder.viewport.maxDepth = 1.0f;
-
-	pipelineBuilder.scissor.offset = {0, 0};
-	pipelineBuilder.scissor.extent = windowExtent;
-
-	// configure the rasterizer to draw filled triangles
-	pipelineBuilder.rasterizer = vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL);
-
-	// we don't use multisampling, so just run the default one
-	pipelineBuilder.multisampling = vkinit::multisamplingStateCreateInfo();
-
-	// a single blend attachment with no blending and writing to RGBA
-	pipelineBuilder.colorBlendAttachment = vkinit::colorBlendAttachmentState();
-
-	pipelineBuilder.depthStencil = vkinit::depthStencilCreateInfo(true, true, VK_COMPARE_OP_LESS_OR_EQUAL);
+	pipeline_builder.inputAssembly = vkinit::inputAssemblyCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+	pipeline_builder.viewport = {
+		0.0f, 0.0f,
+		static_cast<float>(windowExtent.width), static_cast<float>(windowExtent.height),
+		0.0f, 1.0f
+	};
+	pipeline_builder.scissor = {{0, 0}, windowExtent};
+	pipeline_builder.rasterizer = vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL);
+	pipeline_builder.multisampling = vkinit::multisamplingStateCreateInfo();
+	pipeline_builder.colorBlendAttachment = vkinit::colorBlendAttachmentState();
+	pipeline_builder.depthStencil = vkinit::depthStencilCreateInfo(true, true, VK_COMPARE_OP_LESS_OR_EQUAL);
 
 
-	pipelineBuilder.shaderStages.push_back(
+	pipeline_builder.shaderStages.push_back(
 		vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_VERTEX_BIT, meshVert));
 
-	pipelineBuilder.shaderStages.push_back(
+	pipeline_builder.shaderStages.push_back(
 		vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_FRAGMENT_BIT, defaultLitFrag));
 
 	// use the triangle layout we created
-	pipelineBuilder.pipelineLayout = monochromePipelineLayout;
+	pipeline_builder.pipelineLayout = monochrome_pipeline_layout;
 
 	// finally build the pipeline
-	const auto monochromePipeline = pipelineBuilder.buildPipeline(device, renderPass);
-	createMaterial(monochromePipeline, monochromePipelineLayout, "monochrome");
+	const auto monochrome_pipeline = pipeline_builder.buildPipeline(device, renderPass);
+	createMaterial(monochrome_pipeline, monochrome_pipeline_layout, "monochrome");
 
 	// build the mesh pipeline
 
 	// clear the shader stages for the builder
-	pipelineBuilder.shaderStages.clear();
+	pipeline_builder.shaderStages.clear();
 
 	// add the other shaders
-	pipelineBuilder.shaderStages.push_back(
+	pipeline_builder.shaderStages.push_back(
 		vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_VERTEX_BIT, meshVert));
 
 	// make sure that triangleFragShader is holding the compiled colored_triangle.frag
-	pipelineBuilder.shaderStages.push_back(
+	pipeline_builder.shaderStages.push_back(
 		vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_FRAGMENT_BIT, meshFrag));
 
 	// set up push constants
 	auto meshPipelineLayoutInfo = vkinit::pipelineLayoutCreateInfo();
 
-	meshPipelineLayoutInfo.pushConstantRangeCount = 1;
-	meshPipelineLayoutInfo.pPushConstantRanges = &pushConstant;
+	//meshPipelineLayoutInfo.pushConstantRangeCount = 1;
+	//meshPipelineLayoutInfo.pPushConstantRanges = &push_constant;
 
 	meshPipelineLayoutInfo.setLayoutCount = 2;
-	meshPipelineLayoutInfo.pSetLayouts = setLayouts;
+	meshPipelineLayoutInfo.pSetLayouts = set_layouts;
 
 	VkPipelineLayout meshPipelineLayout{};
 
 	vkCheck(vkCreatePipelineLayout(device, &meshPipelineLayoutInfo, nullptr, &meshPipelineLayout));
 
-	pipelineBuilder.pipelineLayout = meshPipelineLayout;
+	pipeline_builder.pipelineLayout = meshPipelineLayout;
 
 	// build the mesh triangle pipeline
-	const auto meshPipeline = pipelineBuilder.buildPipeline(device, renderPass);
+	const auto meshPipeline = pipeline_builder.buildPipeline(device, renderPass);
 
 	createMaterial(meshPipeline, meshPipelineLayout, "defaultmesh");
 
@@ -762,22 +739,22 @@ void VulkanEngine::initPipelines()
 	texturedPipelineLayoutInfo.setLayoutCount = 3;
 	texturedPipelineLayoutInfo.pSetLayouts = texturedSetLayouts;
 
-	VkPipelineLayout texturedPipelineLayout{};
-	vkCheck(vkCreatePipelineLayout(device, &texturedPipelineLayoutInfo, nullptr, &texturedPipelineLayout));
+	VkPipelineLayout textured_pipeline_layout{};
+	vkCheck(vkCreatePipelineLayout(device, &texturedPipelineLayoutInfo, nullptr, &textured_pipeline_layout));
 
-	pipelineBuilder.shaderStages.clear();
+	pipeline_builder.shaderStages.clear();
 	// add the other shaders
-	pipelineBuilder.shaderStages.push_back(
+	pipeline_builder.shaderStages.push_back(
 		vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_VERTEX_BIT, meshVert));
 
 	// make sure that triangleFragShader is holding the compiled colored_triangle.frag
-	pipelineBuilder.shaderStages.push_back(
+	pipeline_builder.shaderStages.push_back(
 		vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_FRAGMENT_BIT, texturedMeshFrag));
 
-	pipelineBuilder.pipelineLayout = texturedPipelineLayout;
-	const auto texPipeline = pipelineBuilder.buildPipeline(device, renderPass);
+	pipeline_builder.pipelineLayout = textured_pipeline_layout;
+	const auto texPipeline = pipeline_builder.buildPipeline(device, renderPass);
 
-	createMaterial(texPipeline, texturedPipelineLayout, "texturedmesh");
+	createMaterial(texPipeline, textured_pipeline_layout, "texturedmesh");
 
 	// cleanup
 
@@ -789,12 +766,12 @@ void VulkanEngine::initPipelines()
 
 	mainDeletionQueue.pushFunction([=]()
 	{
-		vkDestroyPipeline(device, monochromePipeline, nullptr);
-		vkDestroyPipelineLayout(device, monochromePipelineLayout, nullptr);
+		vkDestroyPipeline(device, monochrome_pipeline, nullptr);
+		vkDestroyPipelineLayout(device, monochrome_pipeline_layout, nullptr);
 		vkDestroyPipeline(device, meshPipeline, nullptr);
 		vkDestroyPipeline(device, texPipeline, nullptr);
 		vkDestroyPipelineLayout(device, meshPipelineLayout, nullptr);
-		vkDestroyPipelineLayout(device, texturedPipelineLayout, nullptr);
+		vkDestroyPipelineLayout(device, textured_pipeline_layout, nullptr);
 	});
 }
 
@@ -925,15 +902,15 @@ VkPipeline PipelineBuilder::buildPipeline(const VkDevice device, const VkRenderP
 	pipelineInfo.basePipelineHandle = nullptr;
 
 	// its easy to error out on create graphics pipeline, so we handle it a bit better than the common vkCheck case
-	VkPipeline newPipeline{};
+	VkPipeline new_pipeline{};
 	if (vkCreateGraphicsPipelines(
-		device, nullptr, 1, &pipelineInfo, nullptr, &newPipeline) != VK_SUCCESS)
+		device, nullptr, 1, &pipelineInfo, nullptr, &new_pipeline) != VK_SUCCESS)
 	{
 		std::cout << "failed to create pipline\n";
 		return nullptr; // failed to create graphics pipeline
 	}
 
-	return newPipeline;
+	return new_pipeline;
 }
 
 void VulkanEngine::initSwapchain()
@@ -942,7 +919,7 @@ void VulkanEngine::initSwapchain()
 
 	vkb::Swapchain vkbSwapchain = swapchainBuilder
 	                              .use_default_format_selection()
-	                              .set_desired_present_mode(VK_PRESENT_MODE_FIFO_KHR)
+	                              .set_desired_present_mode(VK_PRESENT_MODE_MAILBOX_KHR)
 	                              .set_desired_extent(windowExtent.width, windowExtent.height)
 	                              .build().value();
 
@@ -1176,13 +1153,6 @@ void VulkanEngine::drawObjects(const VkCommandBuffer cmd, RenderObject* first, i
 			}
 		}
 
-
-		MeshPushConstants constants{};
-		constants.renderMatrix = object.transformMatrix;
-
-		//upload the mesh to the gpu via pushconstants
-		vkCmdPushConstants(cmd, object.material->pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0,
-		                   sizeof(MeshPushConstants), &constants);
 
 		//only bind the mesh if its a different one from last bind
 		if (object.mesh != lastMesh)

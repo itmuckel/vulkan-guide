@@ -11,8 +11,13 @@ project("vulkan_guide")
 
 find_package(Vulkan REQUIRED)
 
-add_subdirectory(assetlib)
+include_directories("C:/src/vcpkg/installed/x64-windows/include")
+link_directories("C:/src/vcpkg/installed/x64-windows/lib") 
+link_directories("C:/src/vcpkg/installed/x64-windows/lib/manual-link") 
+
 add_subdirectory(third_party)
+add_subdirectory(assetlib)
+add_subdirectory(asset-baker)
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${PROJECT_SOURCE_DIR}/bin")
 
